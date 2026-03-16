@@ -2,9 +2,13 @@ package com.Minterest.ImageHosting.service.ImageService;
 
 
 import com.Minterest.ImageHosting.model.Pin;
+import com.Minterest.ImageHosting.model.PinLike;
 import com.Minterest.ImageHosting.model.User;
+import com.Minterest.ImageHosting.repo.mysql.PinLikeRepository;
 import com.Minterest.ImageHosting.repo.mysql.PinRepository;
 import com.Minterest.ImageHosting.repo.mysql.UserRepository;
+import com.Minterest.ImageHosting.service.RedisFeedService;
+import com.Minterest.ImageHosting.config.redis.RedisPublisherService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -25,6 +29,9 @@ public class PinService {
     private final PinRepository pinRepository;
     private final UserRepository userRepository;
     private final PinServiceInterface s3FileService;
+    private final PinLikeRepository pinLikeRepository;
+    private final RedisFeedService redisFeedService;
+    private final RedisPublisherService redisPublisherService;
 
     @Transactional
     public Pin createPin(MultipartFile imageFile,
@@ -141,5 +148,52 @@ public class PinService {
             log.error("Failed to extract key from URL: {}", url, e);
             return null;
         }
+    }
+
+    @Transactional
+    public void likePin(UUID pinId, UUID userId) {
+        Pin pin = pinRepository.findById(pinId)
+                .orElseThrow(() -> new RuntimeException("Pin not found"));
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        if (pinLikeRepository.findByUserAndPin(user, pin).isEmpty()) {
+            PinLike pinLike = new PinLike();
+            pinLike.setUser(user);
+            pinLike.setPin(pin);
+            pinLikeRepository.save(pinLike);
+
+            // Increase trending score by 2
+            redisFeedService.updatePinScore(pinId, 2.0);
+            
+            // Dispatch to Redis Pub/Sub
+            String msg = String.format("User %s liked Pin %s", userId, pinId);
+            redisPublisherService.publishLikeEvent(msg);
+            
+            log.info(msg);
+        }
+    }
+
+    @Transactional
+    public void unlikePin(UUID pinId, UUID userId) {
+        Pin pin = pinRepository.findById(pinId)
+                .orElseThrow(() -> new RuntimeException("Pin not found"));
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        pinLikeRepository.findByUserAndPin(user, pin).ifPresent(pinLike -> {
+            pinLikeRepository.delete(pinLike);
+
+            // Decrease trending score by 2
+            redisFeedService.updatePinScore(pinId, -2.0);
+            log.info("User {} unliked Pin {}", userId, pinId);
+        });
+    }
+
+    @Transactional(readOnly = true)
+    public long getPinLikesCount(UUID pinId) {
+        Pin pin = pinRepository.findById(pinId)
+                .orElseThrow(() -> new RuntimeException("Pin not found"));
+        return pinLikeRepository.countByPin(pin);
     }
 }

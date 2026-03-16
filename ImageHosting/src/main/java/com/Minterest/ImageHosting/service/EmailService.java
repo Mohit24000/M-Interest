@@ -83,7 +83,7 @@ public class EmailService {
 
     public void sendLikeEmail(String toEmail, String content) throws MessagingException {
 
-        String subject = "So one Commment on your Pin";
+        String subject = "So one Comment on your Pin";
 
         String body = """
             <html>

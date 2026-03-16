@@ -50,7 +50,7 @@ public class UserController {
 
         return userService.updateUsername(id, username);
     }
-    @PatchMapping("/{id}/bio")
+    @PatchMapping("/{id}/profileImage")
     public UserDTO updateProfileImage(@PathVariable UUID id,
                              @RequestParam String profileImageUrl){
 

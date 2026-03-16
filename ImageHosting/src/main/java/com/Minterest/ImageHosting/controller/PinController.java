@@ -13,7 +13,9 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Slf4j
 @RestController
@@ -22,6 +24,7 @@ import java.util.UUID;
 public class PinController {
 
     private final PinService pinService;
+    private final com.Minterest.ImageHosting.service.RedisFeedService redisFeedService;
 
     // Pin endpoints
     @PostMapping
@@ -66,5 +69,35 @@ public class PinController {
         return ResponseEntity.ok(imageUrl);
     }
 
+    @GetMapping("/trending")
+    public ResponseEntity<List<Pin>> getTrendingFeed(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        
+        Set<UUID> trendingPinIds = redisFeedService.getTrendingPinIds(page, size);
+        
+        List<Pin> trendingPins = trendingPinIds.stream()
+                .map(pinService::getPinWithDetails)
+                .collect(Collectors.toList());
+                
+        return ResponseEntity.ok(trendingPins);
+    }
 
-}
+    @PostMapping("/{pinId}/like")
+    public ResponseEntity<Void> likePin(@PathVariable UUID pinId, @RequestParam UUID userId) {
+        pinService.likePin(pinId, userId);
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/{pinId}/unlike")
+    public ResponseEntity<Void> unlikePin(@PathVariable UUID pinId, @RequestParam UUID userId) {
+        pinService.unlikePin(pinId, userId);
+        return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/{pinId}/likes")
+    public ResponseEntity<Long> getPinLikesCount(@PathVariable UUID pinId) {
+        long count = pinService.getPinLikesCount(pinId);
+        return ResponseEntity.ok(count);
+    }
+}

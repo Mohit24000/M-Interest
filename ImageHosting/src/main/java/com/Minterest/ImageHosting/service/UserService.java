@@ -6,6 +6,7 @@ import com.Minterest.ImageHosting.model.User;
 import com.Minterest.ImageHosting.repo.mysql.UserRepository;
 import jakarta.servlet.http.HttpSession;
 import org.springframework.stereotype.Service;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.List;
 import java.util.UUID;
@@ -15,15 +16,23 @@ import java.util.stream.Collectors;
 public class UserService {
 
     private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
 
-    public UserService(UserRepository userRepository){
+    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder){
         this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
     }
 
     public UserDTO createUser(User user){
+        // Encode password before saving
+        user.setPassword(passwordEncoder.encode(user.getPassword()));
+        
+        // If username not set, assign a default
+        if(user.getUsername() == null || user.getUsername().trim().isEmpty()) {
+            user.setUsername("user_" + UUID.randomUUID().toString().substring(0,8));
+        }
 
         User saved = userRepository.save(user);
-
         return convertToDTO(saved);
     }
 
@@ -93,7 +102,7 @@ public class UserService {
 
     public String login(String email, String password, HttpSession session) {
         return userRepository.findByEmailIgnoreCase(email).map(user -> {
-            if (!user.getPassword().equals(password)) {
+            if (user.getPassword() == null || !passwordEncoder.matches(password, user.getPassword())) {
                 return "Invalid Credentials";
             }
             session.setAttribute("email", user.getEmail());

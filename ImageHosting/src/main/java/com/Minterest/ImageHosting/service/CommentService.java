@@ -5,6 +5,7 @@ import com.Minterest.ImageHosting.model.Comments;
 import com.Minterest.ImageHosting.model.Pin;
 import com.Minterest.ImageHosting.repo.mysql.CommentRepository;
 import com.Minterest.ImageHosting.repo.mysql.PinRepository;
+import com.Minterest.ImageHosting.config.redis.RedisPublisherService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -13,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.UUID;
 
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -20,6 +22,8 @@ public class CommentService {
 
     private final CommentRepository commentRepository;
     private final PinRepository pinRepository;
+    private final RedisFeedService redisFeedService;
+    private final RedisPublisherService redisPublisherService;
 
     @Transactional
     public Comments addCommentToPin(UUID pinId, String content, Long userId) {
@@ -33,6 +37,12 @@ public class CommentService {
 
         Comments savedComment = commentRepository.save(comment);
         log.info("Comment added to pin: {} with content: {}", pinId, content);
+
+        // Update trending score (Comments weigh +3)
+        redisFeedService.updatePinScore(pinId, 3.0);
+        
+        // Dispatch to Redis Pub/Sub
+        redisPublisherService.publishCommentEvent(String.format("User %s commented on Pin %s", userId, pinId));
 
         return savedComment;
     }
@@ -53,6 +63,12 @@ public class CommentService {
 
         Comments savedReply = commentRepository.save(reply);
         log.info("Reply added to comment: {} on pin: {}", parentCommentId, pinId);
+
+        // Update trending score for reply as well
+        redisFeedService.updatePinScore(pinId, 2.0);
+        
+        // Dispatch to Redis Pub/Sub
+        redisPublisherService.publishCommentEvent(String.format("Anonymous user replied to Comment %s", parentCommentId));
 
         return savedReply;
     }

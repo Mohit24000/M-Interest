@@ -1,35 +1,22 @@
 package com.Minterest.ImageHosting.config.elastic;
 
-import co.elastic.clients.elasticsearch.ElasticsearchClient;
-import co.elastic.clients.json.jackson.JacksonJsonpMapper;
-import co.elastic.clients.transport.ElasticsearchTransport;
-import co.elastic.clients.transport.rest_client.RestClientTransport;
-import org.apache.http.HttpHost;
-import org.elasticsearch.client.RestClient;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.elasticsearch.client.ClientConfiguration;
+import org.springframework.data.elasticsearch.client.elc.ElasticsearchConfiguration;
 import org.springframework.data.elasticsearch.repository.config.EnableElasticsearchRepositories;
 
 @Configuration
-@EnableElasticsearchRepositories(basePackages = "com.Minterest.ImageHostingApp.repository.elasticsearch")
-public class ElasticsearchConfig {
+@EnableElasticsearchRepositories(basePackages = "com.Minterest.ImageHosting.repo.elastic")
+public class ElasticsearchConfig extends ElasticsearchConfiguration {
 
-    @Value("${spring.elasticsearch.uris:http://localhost:9200}")
+    @Value("${spring.elasticsearch.uris:localhost:9200}")
     private String elasticsearchUri;
 
-    @Bean
-    public RestClient restClient() {
-        return RestClient.builder(HttpHost.create(elasticsearchUri)).build();
-    }
-
-    @Bean
-    public ElasticsearchTransport elasticsearchTransport(RestClient restClient) {
-        return new RestClientTransport(restClient, new JacksonJsonpMapper());
-    }
-
-    @Bean
-    public ElasticsearchClient elasticsearchClient(ElasticsearchTransport transport) {
-        return new ElasticsearchClient(transport);
+    @Override
+    public ClientConfiguration clientConfiguration() {
+        return ClientConfiguration.builder()
+                .connectedTo(elasticsearchUri.replace("http://", "").replace("https://", ""))
+                .build();
     }
 }
