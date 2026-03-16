@@ -4,6 +4,7 @@ package com.Minterest.ImageHosting.service;
 import com.Minterest.ImageHosting.dto.UserDTO;
 import com.Minterest.ImageHosting.model.User;
 import com.Minterest.ImageHosting.repo.mysql.UserRepository;
+import jakarta.servlet.http.HttpSession;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -89,5 +90,29 @@ public class UserService {
 
         return dto;
     }
+
+    public String login(String email, String password, HttpSession session) {
+        return userRepository.findByEmailIgnoreCase(email).map(user -> {
+            if (!user.getPassword().equals(password)) {
+                return "Invalid Credentials";
+            }
+            session.setAttribute("email", user.getEmail());
+            session.setAttribute("userId", user.getUserId());
+            return "Login SuccessFull : ".concat(session.getId());
+        }).orElse("Invalid Credentials");
+    }
+
+    public String getProfile(HttpSession session) {
+        if (session == null) {
+            return "Not LoggedIn";
+        }
+        Object email = session.getAttribute("email");
+
+        if (email == null) {
+            return "Not LoggedIn";
+        }
+        return "Welcome : " + email ;
+    }
+
 
 }

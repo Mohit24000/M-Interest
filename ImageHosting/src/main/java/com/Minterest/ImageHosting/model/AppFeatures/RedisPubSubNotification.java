@@ -1,5 +1,4 @@
 package com.Minterest.ImageHosting.model.AppFeatures;
 
-public class Feed {
-
+public class RedisPubSubNotification {
 }

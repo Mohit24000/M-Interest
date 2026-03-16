@@ -1,4 +1,4 @@
 package com.Minterest.ImageHosting.exception;
 
-public class fsf {
+public class GlobalExceptionHandler {
 }

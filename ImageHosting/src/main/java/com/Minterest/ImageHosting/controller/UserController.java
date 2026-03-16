@@ -3,6 +3,8 @@ package com.Minterest.ImageHosting.controller;
 import com.Minterest.ImageHosting.dto.UserDTO;
 import com.Minterest.ImageHosting.model.User;
 import com.Minterest.ImageHosting.service.UserService;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpSession;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -53,5 +55,23 @@ public class UserController {
                              @RequestParam String profileImageUrl){
 
         return userService.updateProfileImage(id, profileImageUrl);
+    }
+
+
+    @GetMapping("/login")
+    public String login(@RequestParam String email, @RequestParam String password,
+                        HttpSession session) {
+        return userService.login(email, password, session);
+    }
+
+    @GetMapping("/profile")
+    public String profile(HttpServletRequest servletRequest) {
+        return userService.getProfile(servletRequest.getSession(false));
+    }
+
+
+    @GetMapping("/logout")
+    public void logout(HttpSession session) {
+        session.invalidate();
     }
 }
