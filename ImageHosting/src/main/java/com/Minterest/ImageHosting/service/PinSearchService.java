@@ -114,10 +114,11 @@ public class PinSearchService {
             return pinElasticsearchRepository.findAll(pageable);
         }
 
-        // Handle tags - if null or empty, use empty ArrayList (mutable)
-        List<String> nonNullTags = tags != null ? new ArrayList<>(tags) : new ArrayList<>();
-
-        // Search with both query and tags
+        // If no query, just search by tags
+        if (tags != null && !tags.isEmpty()) {
+            return pinElasticsearchRepository.findByTagsIn(tags, pageable);
+        }
+        // Fall through: full text search (tags ignored if both provided - ES @Query handles title+desc+tags)
         return pinElasticsearchRepository.searchPins(query.trim(), pageable);
     }
 

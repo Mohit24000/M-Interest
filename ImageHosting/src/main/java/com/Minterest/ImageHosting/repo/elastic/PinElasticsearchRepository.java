@@ -24,7 +24,7 @@ public interface PinElasticsearchRepository extends ElasticsearchRepository<PinD
     @Query("{\"bool\": {\"should\": [" +
             "{\"match\": {\"title\": {\"query\": \"?0\", \"fuzziness\": \"AUTO\"}}}," +
             "{\"match\": {\"description\": {\"query\": \"?0\", \"fuzziness\": \"AUTO\"}}}," +
-            "{\"match\": {\"tags\": {\"query\": \"?0\", \"fuzziness\": \"AUTO\"}}}" +  // ← Tags with fuzziness
+            "{\"match\": {\"tags\": {\"query\": \"?0\", \"fuzziness\": \"AUTO\"}}}" +
             "]}}")
     Page<PinDocument> searchPins(String searchTerm, Pageable pageable);
     // Find by user

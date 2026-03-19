@@ -129,7 +129,7 @@ public class EmailService {
                                 <!-- Footer -->
                                 <tr>
                                     <td style="font-size:12px; color:#999; text-align:center; padding-top:15px;">
-                                        © 2026 MInterest App. Secure & Trusted.
+                                        © 2026 N_Interest App. Secure & Trusted.
                                     </td>
                                 </tr>
 

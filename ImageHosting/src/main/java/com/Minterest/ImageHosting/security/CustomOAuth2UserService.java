@@ -25,7 +25,7 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
 
     @Override
     public OAuth2User loadUser(OAuth2UserRequest userRequest) throws OAuth2AuthenticationException {
-        // Fetch the user information from the OAuth2 provider (Google, GitHub, etc.)
+        // Fetch the user information from the OAuth2 provider (Google, GitHub....)
         OAuth2User oAuth2User = super.loadUser(userRequest);
 
         try {
@@ -94,11 +94,17 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
         }
 
         // Return a custom OAuth2 user object containing authorities & attributes
-        // The authorities can be loaded fully based on roles if your User entity has them.
+        // GitHub uses 'login' (String) as the name attribute key; Google uses 'email'.
+        String nameAttributeKey;
+        if ("google".equalsIgnoreCase(registrationId)) {
+            nameAttributeKey = "email";
+        } else {
+            nameAttributeKey = "login"; // GitHub: 'id' is an Integer, must use 'login'
+        }
         return new DefaultOAuth2User(
-                Collections.emptyList(), // Authorities (empty list since there's no Role class provided)
+                Collections.emptyList(),
                 attributes,
-                "google".equalsIgnoreCase(registrationId) ? "email" : "id" // Name attribute key
+                nameAttributeKey
         );
     }
 }

@@ -23,6 +23,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(authz -> authz
                 .requestMatchers("/user/resister", "/user/login", "/user/profile").permitAll()
                 .requestMatchers("/oauth2/**", "/login/**").permitAll()
+                .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/pins/trending", "/api/pins/*", "/api/search/**").permitAll() // Public read access
                 .anyRequest().authenticated()
             )
             .oauth2Login(oauth2 -> oauth2

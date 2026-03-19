@@ -1,17 +1,12 @@
 package com.Minterest.ImageHosting.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.core.ZSetOperations;
-import org.springframework.data.util.Pair;
 import org.springframework.stereotype.Service;
 
-import java.time.Duration;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -19,19 +14,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class RedisFeedService {
 
-    private com.Minterest.ImageHosting.model.User user;
-    private com.Minterest.ImageHosting.model.Pin pin;
-    private com.Minterest.ImageHosting.model.PinLike pinLike;
-
-    private final ObjectMapper objectMapper;
-    private final RedisTemplate<String , String> redisTemplate;
-    
-    @lombok.Setter
-    private Supplier<Pair<Boolean, Duration>> expiryHandler;
-
-    public <T> void cacheData(final String key, final String hashkey,
-                              final T data, final Duration duration) {
-    }
+    private final RedisTemplate<String, String> redisTemplate;
     
     private static final String TRENDING_PINS_KEY = "trending_pins";
 

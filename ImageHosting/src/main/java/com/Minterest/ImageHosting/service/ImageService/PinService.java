@@ -9,6 +9,7 @@ import com.Minterest.ImageHosting.repo.mysql.PinRepository;
 import com.Minterest.ImageHosting.repo.mysql.UserRepository;
 import com.Minterest.ImageHosting.service.RedisFeedService;
 import com.Minterest.ImageHosting.config.redis.RedisPublisherService;
+import com.Minterest.ImageHosting.service.PinSearchService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -32,6 +33,7 @@ public class PinService {
     private final PinLikeRepository pinLikeRepository;
     private final RedisFeedService redisFeedService;
     private final RedisPublisherService redisPublisherService;
+    private final PinSearchService pinSearchService;
 
     @Transactional
     public Pin createPin(MultipartFile imageFile,
@@ -72,6 +74,9 @@ public class PinService {
         Pin savedPin = pinRepository.save(pin);
         log.info("Pin created successfully with ID: {} and S3 key: {}", savedPin.getPinId(), uploadResponse.getKey());
 
+        // Sync to Elasticsearch
+        pinSearchService.indexPin(savedPin);
+
         return savedPin;
     }
 
@@ -99,7 +104,10 @@ public class PinService {
         pin.setDownloadUrl(s3FileService.generatePublicUrl(uploadResponse.getKey()));
         pin.setUpdatedAt(LocalDateTime.now());
 
-        return pinRepository.save(pin);
+        Pin updated = pinRepository.save(pin);
+        // Re-sync to Elasticsearch
+        pinSearchService.indexPin(updated);
+        return updated;
     }
 
     @Transactional
@@ -112,6 +120,9 @@ public class PinService {
         if (key != null) {
             s3FileService.deleteFile(key);
         }
+
+        // Remove from Elasticsearch index
+        pinSearchService.removePinFromIndex(pinId);
 
         // Delete pin from database (comments will be cascade deleted)
         pinRepository.delete(pin);
