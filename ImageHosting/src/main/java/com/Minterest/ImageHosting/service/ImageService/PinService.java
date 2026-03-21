@@ -7,21 +7,25 @@ import com.Minterest.ImageHosting.model.User;
 import com.Minterest.ImageHosting.repo.mysql.PinLikeRepository;
 import com.Minterest.ImageHosting.repo.mysql.PinRepository;
 import com.Minterest.ImageHosting.repo.mysql.UserRepository;
+import com.Minterest.ImageHosting.service.ContentModerationService;
 import com.Minterest.ImageHosting.service.RedisFeedService;
 import com.Minterest.ImageHosting.service.RedisPublisherService;
 import com.Minterest.ImageHosting.service.PinSearchService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
@@ -36,9 +40,14 @@ public class PinService {
     private final RedisPublisherService redisPublisherService;
     private final PinSearchService pinSearchService;
     private final RedisTemplate<String, Object> redisTemplate;
+    private final ContentModerationService moderationService;
+
+    @Value("${app.s3.bucket}")
+    private String bucketName;
 
     private static final String LIKE_BUFFER_KEY = "likes:buffer:";
     private static final String SYNC_PENDING_KEY = "likes:sync:pins";
+    private static final String UPLOAD_LIMIT_KEY = "upload:limit:";
 
     @Transactional
     public Pin createPin(MultipartFile imageFile,
@@ -46,6 +55,19 @@ public class PinService {
                          String description,
                          UUID userId,
                          List<String> tags) {
+
+        // 1. Check Daily Upload Limit (Max 3 per day)
+        String limitKey = UPLOAD_LIMIT_KEY + userId + ":" + LocalDate.now();
+        Long uploadCount = redisTemplate.opsForValue().increment(limitKey);
+        
+        if (uploadCount != null && uploadCount > 3) {
+            log.warn("User {} exceeded daily upload limit", userId);
+            throw new RuntimeException("You have reached your daily limit of 3 pins. Try again tomorrow!");
+        }
+        
+        if (uploadCount != null && uploadCount == 1) {
+            redisTemplate.expire(limitKey, 24, TimeUnit.HOURS);
+        }
 
         // Get user
         User user = userRepository.findById(userId)
@@ -57,27 +79,32 @@ public class PinService {
         metadata.put("title", title);
         metadata.put("uploadSource", "PinCreation");
 
-        // Upload image to S3
+        // 2. Upload image to S3 (Quarantine/Temp state)
         String folderPath = "pins/" + userId;
         var uploadResponse = s3FileService.uploadFile(imageFile, folderPath, metadata);
+        String s3Key = uploadResponse.getKey();
 
-        // Create Pin entity
+        // 3. NSFW Content Moderation Check
+        if (!moderationService.isImageSafe(bucketName, s3Key)) {
+            s3FileService.deleteFile(s3Key); // Delete from S3 immediately
+            // Decrement limit if upload failed due to moderation
+            redisTemplate.opsForValue().decrement(limitKey);
+            throw new RuntimeException("Upload failed: Inappropriate content detected.");
+        }
+
+        // 4. Create Pin entity (Finalize)
         Pin pin = new Pin();
         pin.setUser(user);
         pin.setTitle(title);
         pin.setDescription(description);
         pin.setPinUrl(uploadResponse.getUrl()); // Presigned URL for viewing
-        pin.setDownloadUrl(s3FileService.generatePublicUrl(uploadResponse.getKey())); // Public URL
+        pin.setDownloadUrl(s3FileService.generatePublicUrl(s3Key)); // Public URL
         pin.setTags(tags);
         pin.setUploadedAt(LocalDateTime.now());
         pin.setUpdatedAt(LocalDateTime.now());
 
-        // Get image dimensions if available (you might need to extract from file)
-        // pin.setImageWidth(width);
-        // pin.setImageHeight(height);
-
         Pin savedPin = pinRepository.save(pin);
-        log.info("Pin created successfully with ID: {} and S3 key: {}", savedPin.getPinId(), uploadResponse.getKey());
+        log.info("Pin created successfully with ID: {} and S3 key: {}", savedPin.getPinId(), s3Key);
 
         // Sync to Elasticsearch
         pinSearchService.indexPin(savedPin);

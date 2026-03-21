@@ -3,6 +3,8 @@ package com.Minterest.ImageHosting.config.AWS;
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
+import com.amazonaws.services.rekognition.AmazonRekognition;
+import com.amazonaws.services.rekognition.AmazonRekognitionClientBuilder;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.amazonaws.services.s3.transfer.TransferManager;
@@ -49,6 +51,15 @@ public class S3Config {
     @Bean(destroyMethod = "shutdownNow")
     public ExecutorService transferManagerExecutor() {
         return Executors.newFixedThreadPool(threadPoolSize);
+    }
+
+    @Bean
+    public AmazonRekognition amazonRekognition() {
+        AWSCredentials credentials = new BasicAWSCredentials(awsAccessKey, awsSecretKey);
+        return AmazonRekognitionClientBuilder.standard()
+                .withCredentials(new AWSStaticCredentialsProvider(credentials))
+                .withRegion(region)
+                .build();
     }
 
     @Bean(destroyMethod = "shutdownNow")

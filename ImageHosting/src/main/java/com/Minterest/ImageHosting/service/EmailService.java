@@ -173,7 +173,7 @@ public class EmailService {
                           <p style="color:#6b7280; font-size:14px; margin:0; line-height:1.6;">
                             Your pin is spreading love! Someone just liked your content on MInterest.
                           </p>
-                        </td>
+                        </td>l
                       </tr>
 
                       <!-- Like Message Box -->

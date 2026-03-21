@@ -32,7 +32,6 @@ public class UserService {
         User saved = userRepository.save(user);
         return convertToDTO(saved);
     }
-
     public UserDTO getUserById(UUID userId){
 
         User user = userRepository.findById(userId)
@@ -40,7 +39,6 @@ public class UserService {
 
         return convertToDTO(user);
     }
-
     public List<UserDTO> getAllUsers(){
 
         return userRepository.findAll()
