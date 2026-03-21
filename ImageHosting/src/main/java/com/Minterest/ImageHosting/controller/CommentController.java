@@ -25,7 +25,7 @@ public class CommentController {
     public ResponseEntity<Comments> addComment(
             @PathVariable UUID pinId,
             @RequestParam String content,
-            @RequestParam Long userId) {
+            @RequestParam UUID userId) {
 
         Comments comment = commentService.addCommentToPin(pinId, content, userId);
         return new ResponseEntity<>(comment, HttpStatus.CREATED);

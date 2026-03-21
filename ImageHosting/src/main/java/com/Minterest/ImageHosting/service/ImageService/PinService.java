@@ -1,17 +1,18 @@
 package com.Minterest.ImageHosting.service.ImageService;
 
 
+import com.Minterest.ImageHosting.model.AppFeatures.RedisPubSubNotification;
 import com.Minterest.ImageHosting.model.Pin;
-import com.Minterest.ImageHosting.model.PinLike;
 import com.Minterest.ImageHosting.model.User;
 import com.Minterest.ImageHosting.repo.mysql.PinLikeRepository;
 import com.Minterest.ImageHosting.repo.mysql.PinRepository;
 import com.Minterest.ImageHosting.repo.mysql.UserRepository;
 import com.Minterest.ImageHosting.service.RedisFeedService;
-import com.Minterest.ImageHosting.config.redis.RedisPublisherService;
+import com.Minterest.ImageHosting.service.RedisPublisherService;
 import com.Minterest.ImageHosting.service.PinSearchService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -34,6 +35,10 @@ public class PinService {
     private final RedisFeedService redisFeedService;
     private final RedisPublisherService redisPublisherService;
     private final PinSearchService pinSearchService;
+    private final RedisTemplate<String, Object> redisTemplate;
+
+    private static final String LIKE_BUFFER_KEY = "likes:buffer:";
+    private static final String SYNC_PENDING_KEY = "likes:sync:pins";
 
     @Transactional
     public Pin createPin(MultipartFile imageFile,
@@ -163,30 +168,50 @@ public class PinService {
 
     @Transactional
     public void likePin(UUID pinId, UUID userId) {
+        // 1. Check if already liked in DB
         Pin pin = pinRepository.findById(pinId)
                 .orElseThrow(() -> new RuntimeException("Pin not found"));
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        if (pinLikeRepository.findByUserAndPin(user, pin).isEmpty()) {
-            PinLike pinLike = new PinLike();
-            pinLike.setUser(user);
-            pinLike.setPin(pin);
-            pinLikeRepository.save(pinLike);
+        if (pinLikeRepository.findByUserAndPin(user, pin).isPresent()) {
+            return; // Already in DB
+        }
+
+        // 2. Check and Add to Redis Buffer
+        String bufferKey = LIKE_BUFFER_KEY + pinId;
+        Boolean isNewLike = redisTemplate.opsForSet().add(bufferKey, userId.toString()) > 0;
+
+        if (Boolean.TRUE.equals(isNewLike)) {
+            // Add pin to sync-pending list
+            redisTemplate.opsForSet().add(SYNC_PENDING_KEY, pinId.toString());
 
             // Increase trending score by 2
             redisFeedService.updatePinScore(pinId, 2.0);
             
             // Dispatch to Redis Pub/Sub
-            String msg = String.format("User %s liked Pin %s", userId, pinId);
-            redisPublisherService.publishLikeEvent(msg);
+            RedisPubSubNotification notification = new RedisPubSubNotification(
+                "like", "LIKE_PIN", userId, pinId, java.time.LocalDateTime.now()
+            );
+            redisPublisherService.publishLikeEvent(notification);
             
-            log.info(msg);
+            log.info("Buffered Like Event in Redis: {}", notification);
         }
     }
 
     @Transactional
     public void unlikePin(UUID pinId, UUID userId) {
+        // 1. Remove from Redis Buffer if exists
+        String bufferKey = LIKE_BUFFER_KEY + pinId;
+        Long removedCount = redisTemplate.opsForSet().remove(bufferKey, userId.toString());
+
+        if (removedCount != null && removedCount > 0) {
+            redisFeedService.updatePinScore(pinId, -2.0);
+            log.info("Removed buffered like for User {} on Pin {}", userId, pinId);
+            return;
+        }
+
+        // 2. Otherwise remove from DB immediately (Unlikes are usually less frequent)
         Pin pin = pinRepository.findById(pinId)
                 .orElseThrow(() -> new RuntimeException("Pin not found"));
         User user = userRepository.findById(userId)
@@ -194,10 +219,8 @@ public class PinService {
 
         pinLikeRepository.findByUserAndPin(user, pin).ifPresent(pinLike -> {
             pinLikeRepository.delete(pinLike);
-
-            // Decrease trending score by 2
             redisFeedService.updatePinScore(pinId, -2.0);
-            log.info("User {} unliked Pin {}", userId, pinId);
+            log.info("User {} unliked Pin {} in DB", userId, pinId);
         });
     }
 
@@ -205,6 +228,13 @@ public class PinService {
     public long getPinLikesCount(UUID pinId) {
         Pin pin = pinRepository.findById(pinId)
                 .orElseThrow(() -> new RuntimeException("Pin not found"));
-        return pinLikeRepository.countByPin(pin);
+        
+        // Sum DB count + Redis buffer count
+        long dbCount = pinLikeRepository.countByPin(pin);
+        
+        String bufferKey = LIKE_BUFFER_KEY + pinId;
+        Long bufferCount = redisTemplate.opsForSet().size(bufferKey);
+        
+        return dbCount + (bufferCount != null ? bufferCount : 0);
     }
 }

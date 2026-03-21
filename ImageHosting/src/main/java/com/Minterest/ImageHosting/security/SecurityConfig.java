@@ -34,7 +34,7 @@ public class SecurityConfig {
             )
             // Support normal form login as well, if needed
             .formLogin(form -> form
-                .loginPage("/login") // Custom login page if you have one, or comment out to use default Spring login
+                .loginPage("/login")
                 .permitAll()
             )
             .logout(logout -> logout

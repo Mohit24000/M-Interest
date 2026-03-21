@@ -1,9 +1,8 @@
 package com.Minterest.ImageHosting.controller;
 
 
-import com.Minterest.ImageHosting.model.Comments;
+import com.Minterest.ImageHosting.model.AppFeatures.Feed;
 import com.Minterest.ImageHosting.model.Pin;
-import com.Minterest.ImageHosting.service.CommentService;
 import com.Minterest.ImageHosting.service.ImageService.PinService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -69,8 +68,9 @@ public class PinController {
         return ResponseEntity.ok(imageUrl);
     }
 
+
     @GetMapping("/trending")
-    public ResponseEntity<List<Pin>> getTrendingFeed(
+    public ResponseEntity<Feed> getTrendingFeed(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         
@@ -79,8 +79,10 @@ public class PinController {
         List<Pin> trendingPins = trendingPinIds.stream()
                 .map(pinService::getPinWithDetails)
                 .collect(Collectors.toList());
+        
+        Feed feed = new Feed(trendingPins, page, size, trendingPins.size()); // totalPins could be improved
                 
-        return ResponseEntity.ok(trendingPins);
+        return ResponseEntity.ok(feed);
     }
 
     @PostMapping("/{pinId}/like")

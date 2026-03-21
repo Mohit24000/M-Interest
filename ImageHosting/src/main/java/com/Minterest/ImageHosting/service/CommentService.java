@@ -1,13 +1,14 @@
 package com.Minterest.ImageHosting.service;
 
 
+import com.Minterest.ImageHosting.model.AppFeatures.RedisPubSubNotification;
 import com.Minterest.ImageHosting.model.Comments;
 import com.Minterest.ImageHosting.model.Pin;
 import com.Minterest.ImageHosting.repo.mysql.CommentRepository;
 import com.Minterest.ImageHosting.repo.mysql.PinRepository;
-import com.Minterest.ImageHosting.config.redis.RedisPublisherService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,7 +27,7 @@ public class CommentService {
     private final RedisPublisherService redisPublisherService;
 
     @Transactional
-    public Comments addCommentToPin(UUID pinId, String content, Long userId) {
+    public Comments addCommentToPin(UUID pinId, String content, UUID userId) {
         Pin pin = pinRepository.findById(pinId)
                 .orElseThrow(() -> new RuntimeException("Pin not found with ID: " + pinId));
 
@@ -41,8 +42,15 @@ public class CommentService {
         // Update trending score (Comments weigh +3)
         redisFeedService.updatePinScore(pinId, 3.0);
         
-        // Dispatch to Redis Pub/Sub
-        redisPublisherService.publishCommentEvent(String.format("User %s commented on Pin %s", userId, pinId));
+        // dispatch to redis Pub/Sub for
+        RedisPubSubNotification notification = new RedisPubSubNotification(
+            "comment", 
+            "ADD_COMMENT", 
+            userId, 
+            pinId, 
+            java.time.LocalDateTime.now()
+        );
+        redisPublisherService.publishCommentEvent(notification);
 
         return savedComment;
     }
@@ -68,11 +76,18 @@ public class CommentService {
         redisFeedService.updatePinScore(pinId, 2.0);
         
         // Dispatch to Redis Pub/Sub
-        redisPublisherService.publishCommentEvent(String.format("Anonymous user replied to Comment %s", parentCommentId));
+        RedisPubSubNotification notification = new RedisPubSubNotification(
+            "comment", 
+            "REPLY_COMMENT", 
+            null, // Anonymous user
+            pinId, 
+            java.time.LocalDateTime.now()
+        );
+        redisPublisherService.publishCommentEvent(notification);
 
         return savedReply;
     }
-
+     @Cacheable(value = "pinComments")
     @Transactional(readOnly = true)
     public List<Comments> getCommentsForPin(UUID pinId) {
         Pin pin = pinRepository.findById(pinId)
@@ -80,7 +95,7 @@ public class CommentService {
 
         return commentRepository.findByPinAndParentCommentIsNull(pin);
     }
-
+    @Cacheable(value = "replies")
     @Transactional(readOnly = true)
     public Comments getCommentWithReplies(Long commentId) {
         return commentRepository.findByIdWithReplies(commentId)

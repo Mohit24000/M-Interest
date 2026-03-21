@@ -5,6 +5,7 @@ import com.Minterest.ImageHosting.model.Pin;
 import com.Minterest.ImageHosting.repo.elastic.PinElasticsearchRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -133,6 +134,7 @@ public class PinSearchService {
     /**
      * Get trending pins (most liked/recent)
      */
+    @Cacheable(value = "trending_pins")
     public Page<PinDocument> getTrendingPins(int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.by("likeCount").descending());
         return pinElasticsearchRepository.findAll(pageable);
@@ -141,6 +143,7 @@ public class PinSearchService {
     /**
      * Get pin by ID from index
      */
+    @Cacheable(value = "pin")
     public PinDocument getPinById(UUID pinId) {
         return pinElasticsearchRepository.findById(pinId.toString()).orElse(null);
     }

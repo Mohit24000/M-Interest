@@ -5,6 +5,7 @@ import com.Minterest.ImageHosting.dto.UserDTO;
 import com.Minterest.ImageHosting.model.User;
 import com.Minterest.ImageHosting.repo.mysql.UserRepository;
 import jakarta.servlet.http.HttpSession;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
@@ -13,15 +14,11 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
+@RequiredArgsConstructor
 public class UserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
-
-    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder){
-        this.userRepository = userRepository;
-        this.passwordEncoder = passwordEncoder;
-    }
 
     public UserDTO createUser(User user){
         // Encode password before saving
