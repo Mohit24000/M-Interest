@@ -26,7 +26,7 @@ public class ContentModerationService {
         try {
             DetectModerationLabelsRequest request = new DetectModerationLabelsRequest()
                     .withImage(new Image().withS3Object(new S3Object().withBucket(bucket).withName(key)))
-                    .withMinConfidence(75F);
+                    .withMinConfidence(65F);
 
             DetectModerationLabelsResult result = rekognitionClient.detectModerationLabels(request);
             List<ModerationLabel> labels = result.getModerationLabels();

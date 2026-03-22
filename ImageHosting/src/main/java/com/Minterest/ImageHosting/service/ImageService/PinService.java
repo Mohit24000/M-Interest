@@ -3,14 +3,19 @@ package com.Minterest.ImageHosting.service.ImageService;
 
 import com.Minterest.ImageHosting.model.AppFeatures.RedisPubSubNotification;
 import com.Minterest.ImageHosting.model.Pin;
+import com.Minterest.ImageHosting.model.SavedPin;
 import com.Minterest.ImageHosting.model.User;
 import com.Minterest.ImageHosting.repo.mysql.PinLikeRepository;
 import com.Minterest.ImageHosting.repo.mysql.PinRepository;
+import com.Minterest.ImageHosting.repo.mysql.SavedPinRepository;
 import com.Minterest.ImageHosting.repo.mysql.UserRepository;
 import com.Minterest.ImageHosting.service.ContentModerationService;
+import com.Minterest.ImageHosting.service.EmailService;
 import com.Minterest.ImageHosting.service.RedisFeedService;
 import com.Minterest.ImageHosting.service.RedisPublisherService;
 import com.Minterest.ImageHosting.service.PinSearchService;
+import com.Minterest.ImageHosting.exception.ResourceNotFoundException;
+import jakarta.mail.MessagingException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -41,6 +46,8 @@ public class PinService {
     private final PinSearchService pinSearchService;
     private final RedisTemplate<String, Object> redisTemplate;
     private final ContentModerationService moderationService;
+    private final SavedPinRepository savedPinRepository;
+    private final EmailService emailService;
 
     @Value("${app.s3.bucket}")
     private String bucketName;
@@ -71,7 +78,7 @@ public class PinService {
 
         // Get user
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         // Prepare metadata for S3
         Map<String, String> metadata = new HashMap<>();
@@ -115,7 +122,7 @@ public class PinService {
     @Transactional
     public Pin updatePinImage(UUID pinId, MultipartFile newImage) {
         Pin pin = pinRepository.findById(pinId)
-                .orElseThrow(() -> new RuntimeException("Pin not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Pin not found"));
 
         // Delete old image from S3
         String oldKey = extractKeyFromUrl(pin.getPinUrl());
@@ -145,7 +152,7 @@ public class PinService {
     @Transactional
     public void deletePin(UUID pinId) {
         Pin pin = pinRepository.findById(pinId)
-                .orElseThrow(() -> new RuntimeException("Pin not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Pin not found"));
 
         // Delete image from S3
         String key = extractKeyFromUrl(pin.getPinUrl());
@@ -164,7 +171,7 @@ public class PinService {
     @Transactional(readOnly = true)
     public String getPinImageUrl(UUID pinId, int expiryMinutes) {
         Pin pin = pinRepository.findById(pinId)
-                .orElseThrow(() -> new RuntimeException("Pin not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Pin not found"));
 
         String key = extractKeyFromUrl(pin.getPinUrl());
         return s3FileService.getPresignedUrl(key, expiryMinutes);
@@ -173,7 +180,7 @@ public class PinService {
     @Transactional(readOnly = true)
     public Pin getPinWithDetails(UUID pinId) {
         return pinRepository.findById(pinId)
-                .orElseThrow(() -> new RuntimeException("Pin not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Pin not found"));
     }
 
     // Helper method to extract S3 key from URL
@@ -197,9 +204,9 @@ public class PinService {
     public void likePin(UUID pinId, UUID userId) {
         // 1. Check if already liked in DB
         Pin pin = pinRepository.findById(pinId)
-                .orElseThrow(() -> new RuntimeException("Pin not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Pin not found"));
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         if (pinLikeRepository.findByUserAndPin(user, pin).isPresent()) {
             return; // Already in DB
@@ -223,6 +230,16 @@ public class PinService {
             redisPublisherService.publishLikeEvent(notification);
             
             log.info("Buffered Like Event in Redis: {}", notification);
+
+            // 3. Send Email Notification to Pin Owner
+            try {
+                String pinOwnerEmail = pin.getUser().getEmail();
+                String likerName = user.getUsername();
+                emailService.sendLikeEmail(pinOwnerEmail, likerName + " liked your pin: " + pin.getTitle());
+                log.info("Sent like notification email to {}", pinOwnerEmail);
+            } catch (MessagingException e) {
+                log.error("Failed to send like notification email", e);
+            }
         }
     }
 
@@ -263,5 +280,48 @@ public class PinService {
         Long bufferCount = redisTemplate.opsForSet().size(bufferKey);
         
         return dbCount + (bufferCount != null ? bufferCount : 0);
+    }
+
+    @Transactional
+    public void savePin(UUID pinId, UUID userId) {
+        Pin pin = pinRepository.findById(pinId)
+                .orElseThrow(() -> new RuntimeException("Pin not found"));
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        if (savedPinRepository.findByUserAndPin(user, pin).isPresent()) {
+            return;
+        }
+
+        SavedPin savedPin = new SavedPin();
+        savedPin.setUser(user);
+        savedPin.setPin(pin);
+        savedPinRepository.save(savedPin);
+        pin.setSaves(pin.getSaves() + 1);
+        pinRepository.save(pin);
+
+        //  score (+4)
+        redisFeedService.updatePinScore(pinId, 4.0);
+
+        log.info("User {} saved Pin {}", userId, pinId);
+    }
+
+    @Transactional
+    public void unsavePin(UUID pinId, UUID userId) {
+        Pin pin = pinRepository.findById(pinId)
+                .orElseThrow(() -> new RuntimeException("Pin not found"));
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        savedPinRepository.findByUserAndPin(user, pin).ifPresent(savedPin -> {
+            savedPinRepository.delete(savedPin);
+            pin.setSaves(Math.max(0, pin.getSaves() - 1));
+            pinRepository.save(pin);
+
+            //  score (-4)
+            redisFeedService.updatePinScore(pinId, -4.0);
+
+            log.info("User {} unsaved Pin {}", userId, pinId);
+        });
     }
 }

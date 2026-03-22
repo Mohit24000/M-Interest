@@ -11,9 +11,6 @@ public interface PinServiceInterface {
     String getPresignedUrl(String filename, int expiryMinutes);
     void deleteFile(String filename);
     String generatePublicUrl(String filename);
-    Map<String, Object> getStorageMetrics();
-    List<String> listFolders(String prefix);
-    String uploadMultipart(MultipartFile file, String folderPath);
-    byte[] downloadFile(String filename);
+    byte[] downloadFile(String filename); // add later on
 }
 

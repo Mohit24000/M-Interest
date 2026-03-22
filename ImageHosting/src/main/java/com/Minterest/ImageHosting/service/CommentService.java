@@ -6,6 +6,10 @@ import com.Minterest.ImageHosting.model.Comments;
 import com.Minterest.ImageHosting.model.Pin;
 import com.Minterest.ImageHosting.repo.mysql.CommentRepository;
 import com.Minterest.ImageHosting.repo.mysql.PinRepository;
+import com.Minterest.ImageHosting.repo.mysql.UserRepository;
+import com.Minterest.ImageHosting.service.EmailService;
+import com.Minterest.ImageHosting.exception.ResourceNotFoundException;
+import jakarta.mail.MessagingException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;
@@ -25,11 +29,13 @@ public class CommentService {
     private final PinRepository pinRepository;
     private final RedisFeedService redisFeedService;
     private final RedisPublisherService redisPublisherService;
+    private final UserRepository userRepository;
+    private final EmailService emailService;
 
     @Transactional
     public Comments addCommentToPin(UUID pinId, String content, UUID userId) {
         Pin pin = pinRepository.findById(pinId)
-                .orElseThrow(() -> new RuntimeException("Pin not found with ID: " + pinId));
+                .orElseThrow(() -> new ResourceNotFoundException("Pin not found with ID: " + pinId));
 
         Comments comment = new Comments();
         comment.setContent(content);
@@ -52,6 +58,19 @@ public class CommentService {
         );
         redisPublisherService.publishCommentEvent(notification);
 
+        // Send Email Notification to Pin Owner
+        try {
+            String pinOwnerEmail = pin.getUser().getEmail();
+            String commenterName = userRepository.findById(userId)
+                    .map(u -> u.getUsername())
+                    .orElse("Someone");
+            
+            emailService.sendCommentEmail(pinOwnerEmail, commenterName + " commented: " + content);
+            log.info("Sent comment notification email to {}", pinOwnerEmail);
+        } catch (MessagingException e) {
+            log.error("Failed to send comment notification email", e);
+        }
+
         return savedComment;
     }
 
@@ -59,10 +78,10 @@ public class CommentService {
     public Comments addReplyToComment(Long parentCommentId, String content, UUID pinId) {
         // Verify pin exists
         Pin pin = pinRepository.findById(pinId)
-                .orElseThrow(() -> new RuntimeException("Pin not found with ID: " + pinId));
+                .orElseThrow(() -> new ResourceNotFoundException("Pin not found with ID: " + pinId));
 
         Comments parentComment = commentRepository.findById(parentCommentId)
-                .orElseThrow(() -> new RuntimeException("Parent comment not found with ID: " + parentCommentId));
+                .orElseThrow(() -> new ResourceNotFoundException("Parent comment not found with ID: " + parentCommentId));
 
         Comments reply = new Comments();
         reply.setContent(content);
@@ -85,13 +104,22 @@ public class CommentService {
         );
         redisPublisherService.publishCommentEvent(notification);
 
+        // Send Email Notification to Pin Owner
+        try {
+            String pinOwnerEmail = pin.getUser().getEmail();
+            emailService.sendCommentEmail(pinOwnerEmail, "Someone replied: " + content);
+            log.info("Sent reply notification email to {}", pinOwnerEmail);
+        } catch (MessagingException e) {
+            log.error("Failed to send reply notification email", e);
+        }
+
         return savedReply;
     }
      @Cacheable(value = "pinComments")
     @Transactional(readOnly = true)
     public List<Comments> getCommentsForPin(UUID pinId) {
         Pin pin = pinRepository.findById(pinId)
-                .orElseThrow(() -> new RuntimeException("Pin not found with ID: " + pinId));
+                .orElseThrow(() -> new ResourceNotFoundException("Pin not found with ID: " + pinId));
 
         return commentRepository.findByPinAndParentCommentIsNull(pin);
     }
@@ -99,13 +127,13 @@ public class CommentService {
     @Transactional(readOnly = true)
     public Comments getCommentWithReplies(Long commentId) {
         return commentRepository.findByIdWithReplies(commentId)
-                .orElseThrow(() -> new RuntimeException("Comment not found with ID: " + commentId));
+                .orElseThrow(() -> new ResourceNotFoundException("Comment not found with ID: " + commentId));
     }
 
     @Transactional
     public void deleteComment(Long commentId) {
         Comments comment = commentRepository.findById(commentId)
-                .orElseThrow(() -> new RuntimeException("Comment not found with ID: " + commentId));
+                .orElseThrow(() -> new ResourceNotFoundException("Comment not found with ID: " + commentId));
 
         commentRepository.delete(comment);
         log.info("Comment deleted: {}", commentId);
@@ -114,7 +142,7 @@ public class CommentService {
     @Transactional
     public Comments updateComment(Long commentId, String newContent) {
         Comments comment = commentRepository.findById(commentId)
-                .orElseThrow(() -> new RuntimeException("Comment not found with ID: " + commentId));
+                .orElseThrow(() -> new ResourceNotFoundException("Comment not found with ID: " + commentId));
 
         comment.setContent(newContent);
         Comments updatedComment = commentRepository.save(comment);

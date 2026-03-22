@@ -3,6 +3,7 @@ package com.Minterest.ImageHosting.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.util.Set;
@@ -46,11 +47,17 @@ public class RedisFeedService {
     }
 
     /**
-     * Clears old pins from the trending feed (e.g. older than a week, or keeps top N)
-     * Can be run via a @Scheduled job.
+     * Clears old pins from the trending feed
+     * Runs every hour.
      */
-    public void trimTrendingFeed(int keepTopN) {
-        // Remove elements outside the top N ranking
-        redisTemplate.opsForZSet().removeRange(TRENDING_PINS_KEY, 0, -(keepTopN + 1));
+    @Scheduled(cron = "0 0 * * * *")
+    public void trimTrendingFeed() {
+        int keepTopN = 200;
+        // remove elements outside the top N ranking     0 to totalCount - keepTopN - 1
+        Long totalCount = redisTemplate.opsForZSet().zCard(TRENDING_PINS_KEY);
+        if (totalCount != null && totalCount > keepTopN) {
+            redisTemplate.opsForZSet().removeRange(TRENDING_PINS_KEY, 0, totalCount - keepTopN - 1);
+            log.info("Trimmed trending feed to top {} pins. Removed {} pins.", keepTopN, totalCount - keepTopN);
+        }
     }
 }

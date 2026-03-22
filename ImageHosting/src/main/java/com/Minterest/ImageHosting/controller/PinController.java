@@ -102,4 +102,16 @@ public class PinController {
         long count = pinService.getPinLikesCount(pinId);
         return ResponseEntity.ok(count);
     }
+
+    @PostMapping("/{pinId}/save")
+    public ResponseEntity<Void> savePin(@PathVariable UUID pinId, @RequestParam UUID userId) {
+        pinService.savePin(pinId, userId);
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/{pinId}/unsave")
+    public ResponseEntity<Void> unsavePin(@PathVariable UUID pinId, @RequestParam UUID userId) {
+        pinService.unsavePin(pinId, userId);
+        return ResponseEntity.ok().build();
+    }
 }
