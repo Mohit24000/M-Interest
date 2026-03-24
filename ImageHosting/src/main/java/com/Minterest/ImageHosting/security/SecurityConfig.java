@@ -8,6 +8,10 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import java.util.Arrays;
 
 @Configuration
 @EnableWebSecurity
@@ -19,33 +23,47 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-            .csrf(csrf -> csrf.disable()) // Disable CSRF for simpler API testing (in production you might want to enable this for browser apps)
+            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+            .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(authz -> authz
-                .requestMatchers("/user/resister", "/user/login", "/user/profile").permitAll()
+                .requestMatchers("/api/user/resister", "/api/user/login").permitAll()
                 .requestMatchers("/oauth2/**", "/login/**").permitAll()
-                .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/pins/trending", "/api/pins/*", "/api/search/**").permitAll() // Public read access
+                .requestMatchers("/api/user/me", "/api/user/profile", "/api/user/logout").authenticated()
+                .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/pins/trending", "/api/pins/**", "/api/search/**").permitAll()
+                .requestMatchers(org.springframework.http.HttpMethod.PATCH, "/api/user/**").authenticated()
                 .anyRequest().authenticated()
             )
             .oauth2Login(oauth2 -> oauth2
                 .userInfoEndpoint(userInfo -> userInfo
-                    .userService(customOAuth2UserService) // Delegate to custom service
+                    .userService(customOAuth2UserService)
                 )
-                .defaultSuccessUrl("/user/profile", true) // Redirect here after successful login
+                .defaultSuccessUrl("http://localhost:5173/", true)
             )
-            // Support normal form login as well, if needed
             .formLogin(form -> form
                 .loginPage("/login")
                 .permitAll()
             )
             .logout(logout -> logout
-                .logoutUrl("/logout")
-                .logoutSuccessUrl("/")
+                .logoutUrl("/api/user/logout")
+                .logoutSuccessUrl("http://localhost:5173/login")
                 .invalidateHttpSession(true)
                 .deleteCookies("JSESSIONID")
                 .permitAll()
             );
 
         return http.build();
+    }
+
+    @Bean
+    CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        configuration.setAllowedOrigins(Arrays.asList("http://localhost:5173", "http://127.0.0.1:5173"));
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(Arrays.asList("*"));
+        configuration.setAllowCredentials(true);
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
     }
 
     @Bean

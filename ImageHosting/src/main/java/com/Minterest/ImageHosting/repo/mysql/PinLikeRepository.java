@@ -13,4 +13,5 @@ import java.util.UUID;
 public interface PinLikeRepository extends JpaRepository<PinLike, UUID> {
     Optional<PinLike> findByUserAndPin(User user, Pin pin);
     long countByPin(Pin pin);
+    void deleteByPin(Pin pin);
 }

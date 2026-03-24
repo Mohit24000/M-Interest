@@ -28,15 +28,15 @@ public class PinSearchService {
      */
     public PinDocument convertToDocument(Pin pin) {
         return PinDocument.builder()
-                .id(pin.getPinId().toString())
-                .pinId(pin.getPinId())
-                .userId(pin.getUser() != null ? pin.getUser().getUserId() : null)
+                .id(pin.getPinId() != null ? pin.getPinId().toString() : null)
+                .pinId(pin.getPinId() != null ? pin.getPinId().toString() : null)
+                .userId(pin.getUser() != null && pin.getUser().getUserId() != null ? pin.getUser().getUserId().toString() : null)
                 .username(pin.getUser() != null ? pin.getUser().getUsername() : null)
                 .title(pin.getTitle())
                 .description(pin.getDescription())
                 .pinUrl(pin.getPinUrl())
                 .downloadUrl(pin.getDownloadUrl())
-                .uploadedAt(pin.getUploadedAt())
+                .uploadedAt(pin.getUploadedAt() != null ? pin.getUploadedAt().toString() : null)
                 .saves(pin.getSaves())
                 .tags(pin.getTags())
                 .commentCount(pin.getCommentsList() != null ? pin.getCommentsList().size() : 0)
@@ -77,7 +77,7 @@ public class PinSearchService {
      */
     public void removePinFromIndex(UUID pinId) {
         try {
-            pinElasticsearchRepository.deleteByPinId(pinId);
+            pinElasticsearchRepository.deleteById(pinId.toString());
             log.info("Pin removed from index: {}", pinId);
         } catch (Exception e) {
             log.error("Failed to remove pin from index: {}", pinId, e);
@@ -128,7 +128,7 @@ public class PinSearchService {
      */
     public Page<PinDocument> getUserPins(UUID userId, int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.by("uploadedAt").descending());
-        return pinElasticsearchRepository.findByUserId(userId, pageable);
+        return pinElasticsearchRepository.findByUserId(userId.toString(), pageable);
     }
 
     /**
@@ -148,4 +148,18 @@ public class PinSearchService {
         return pinElasticsearchRepository.findById(pinId.toString()).orElse(null);
     }
 
+    public List<String> getSuggestions(String query) {
+        if (query == null || query.trim().length() < 2) {
+            return List.of();
+        }
+        Pageable pageable = PageRequest.of(0, 10);
+        Page<PinDocument> results = pinElasticsearchRepository.findByTitleContainingIgnoreCase(query.trim(), pageable);
+        return results.getContent().stream()
+                .map(PinDocument::getTitle)
+                .distinct()
+                .limit(8)
+                .toList();
+    
+    }
 }
+

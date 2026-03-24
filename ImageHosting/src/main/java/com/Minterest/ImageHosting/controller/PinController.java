@@ -12,9 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 @Slf4j
 @RestController
@@ -73,15 +71,26 @@ public class PinController {
     public ResponseEntity<Feed> getTrendingFeed(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        
-        Set<UUID> trendingPinIds = redisFeedService.getTrendingPinIds(page, size);
-        
-        List<Pin> trendingPins = trendingPinIds.stream()
-                .map(pinService::getPinWithDetails)
-                .collect(Collectors.toList());
-        
-        Feed feed = new Feed(trendingPins, page, size, trendingPins.size()); // totalPins could be improved
-                
+        Feed feed = pinService.getTrendingFeed(page, size);
+        return ResponseEntity.ok(feed);
+    }
+
+    @GetMapping("/user/{userId}")
+    public ResponseEntity<Feed> getUserPins(
+            @PathVariable UUID userId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        Feed feed = pinService.getPinsByUser(userId, page, size);
+        return ResponseEntity.ok(feed);
+    }
+
+    // DB-backed full-text search fallback (used when Elasticsearch is not running)
+    @GetMapping("/search")
+    public ResponseEntity<Feed> searchPins(
+            @RequestParam(required = false, defaultValue = "") String q,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        Feed feed = pinService.searchPins(q, page, size);
         return ResponseEntity.ok(feed);
     }
 
@@ -109,9 +118,24 @@ public class PinController {
         return ResponseEntity.ok().build();
     }
 
+    @GetMapping("/{pinId}/isSaved")
+    public ResponseEntity<Boolean> isPinSaved(@PathVariable UUID pinId, @RequestParam UUID userId) {
+        boolean saved = pinService.isPinSavedByUser(pinId, userId);
+        return ResponseEntity.ok(saved);
+    }
+
     @PostMapping("/{pinId}/unsave")
     public ResponseEntity<Void> unsavePin(@PathVariable UUID pinId, @RequestParam UUID userId) {
         pinService.unsavePin(pinId, userId);
         return ResponseEntity.ok().build();
     }
-}
+
+    @GetMapping("/saved/{userId}")
+    public ResponseEntity<Feed> getSavedPins(
+            @PathVariable UUID userId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        Feed feed = pinService.getSavedPinsByUser(userId, page, size);
+        return ResponseEntity.ok(feed);
+    }
+}

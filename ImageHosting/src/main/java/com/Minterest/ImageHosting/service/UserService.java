@@ -47,6 +47,12 @@ public class UserService {
                 .collect(Collectors.toList());
     }
 
+    public UserDTO getUserByEmail(String email) {
+        User user = userRepository.findByEmailIgnoreCase(email)
+                .orElseThrow(() -> new RuntimeException("User not found: " + email));
+        return convertToDTO(user);
+    }
+
     public UserDTO updateBio(UUID userId, String bio){
 
         User user = userRepository.findById(userId)
@@ -94,29 +100,4 @@ public class UserService {
 
         return dto;
     }
-
-    public String login(String email, String password, HttpSession session) {
-        return userRepository.findByEmailIgnoreCase(email).map(user -> {
-            if (user.getPassword() == null || !passwordEncoder.matches(password, user.getPassword())) {
-                return "Invalid Credentials";
-            }
-            session.setAttribute("email", user.getEmail());
-            session.setAttribute("userId", user.getUserId());
-            return "Login SuccessFull : ".concat(session.getId());
-        }).orElse("Invalid Credentials");
-    }
-
-    public String getProfile(HttpSession session) {
-        if (session == null) {
-            return "Not LoggedIn";
-        }
-        Object email = session.getAttribute("email");
-
-        if (email == null) {
-            return "Not LoggedIn";
-        }
-        return "Welcome : " + email ;
-    }
-
-
 }

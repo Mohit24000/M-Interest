@@ -18,4 +18,9 @@ public class EmailNotification {
     private String subject;
     private String body;
     private UUID triggeringUserId;
+
+    public String getToEmail() { return toEmail; }
+    public String getSubject() { return subject; }
+    public String getBody() { return body; }
+    public UUID getTriggeringUserId() { return triggeringUserId; }
 }

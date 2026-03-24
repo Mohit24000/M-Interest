@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("comments")
+@RequestMapping("/api/comments")
 public class CommentController {
     CommentService commentService;
     PinService pinService ;
@@ -35,9 +35,10 @@ public class CommentController {
     public ResponseEntity<Comments> addReply(
             @PathVariable UUID pinId,
             @PathVariable Long commentId,
-            @RequestParam String content) {
+            @RequestParam String content,
+            @RequestParam UUID userId) {
 
-        Comments reply = commentService.addReplyToComment(commentId, content, pinId);
+        Comments reply = commentService.addReplyToComment(commentId, content, pinId, userId);
         return new ResponseEntity<>(reply, HttpStatus.CREATED);
     }
 

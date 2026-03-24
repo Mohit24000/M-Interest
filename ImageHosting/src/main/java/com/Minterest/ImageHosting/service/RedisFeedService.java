@@ -60,4 +60,12 @@ public class RedisFeedService {
             log.info("Trimmed trending feed to top {} pins. Removed {} pins.", keepTopN, totalCount - keepTopN);
         }
     }
+
+    /**
+     * Removes a pin from the trending feed (e.g. after deletion).
+     */
+    public void removePinFromFeed(UUID pinId) {
+        redisTemplate.opsForZSet().remove(TRENDING_PINS_KEY, pinId.toString());
+        log.info("Removed pin {} from trending feed", pinId);
+    }
 }

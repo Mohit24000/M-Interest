@@ -8,6 +8,7 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.elasticsearch.annotations.Document;
 import org.springframework.data.elasticsearch.annotations.Field;
 import org.springframework.data.elasticsearch.annotations.FieldType;
+import org.springframework.data.elasticsearch.annotations.Setting;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -18,18 +19,22 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Document(indexName = "pins")
+@Setting(settingPath = "elasticsearch/settings.json")
 public class PinDocument {
 
     @Id
     private String id;
 
     @Field(type = FieldType.Keyword)
-    private UUID pinId;
+    private String pinId;
 
     @Field(type = FieldType.Keyword)
-    private UUID userId;
+    private String userId;
 
-    @Field(type = FieldType.Text)
+    @Field(type = FieldType.Keyword)
+    private String username;
+
+    @Field(type = FieldType.Text, analyzer = "edge_ngram_analyzer", searchAnalyzer = "standard")
     private String title;
 
     @Field(type = FieldType.Text)
@@ -42,12 +47,12 @@ public class PinDocument {
     private String downloadUrl;
 
     @Field(type = FieldType.Date)
-    private LocalDateTime uploadedAt;
+    private String uploadedAt;
 
     @Field(type = FieldType.Long)
     private long saves;
 
-    @Field(type = FieldType.Text)
+    @Field(type = FieldType.Text, analyzer = "edge_ngram_analyzer", searchAnalyzer = "standard")
     private List<String> tags;
 
     @Field(type = FieldType.Integer)
@@ -55,7 +60,4 @@ public class PinDocument {
 
     @Field(type = FieldType.Integer)
     private int likeCount;
-
-    @Field(type = FieldType.Keyword)
-    private String username;
 }

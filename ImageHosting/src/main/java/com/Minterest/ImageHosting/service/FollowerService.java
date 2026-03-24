@@ -28,6 +28,10 @@ public class FollowerService {
         User followerUser = userRepository.findByUsername(followerUsername)
                 .orElseThrow(() -> new RuntimeException("Follower user not found: " + followerUsername));
 
+        if (followerUsername.equals(followingUsername)) {
+            return "You cannot follow yourself";
+        }
+
         if (followerRepository.findByFollowerAndFollowing(followerUser, followingUser).isPresent()) {
             return followerUsername + " is already following " + followingUsername;
         }

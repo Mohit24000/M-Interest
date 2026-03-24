@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/user")
+@RequestMapping("/api/user")
 public class UserController {
 
     private final UserService userService;
@@ -58,20 +58,35 @@ public class UserController {
     }
 
 
-    @GetMapping("/login")
-    public String login(@RequestParam String email, @RequestParam String password,
-                        HttpSession session) {
-        return userService.login(email, password, session);
+    @PatchMapping("/{id}/profile")
+    public UserDTO updateProfile(@PathVariable UUID id,
+                                 @RequestParam(required = false) String username,
+                                 @RequestParam(required = false) String bio) {
+        if (username != null) userService.updateUsername(id, username);
+        if (bio != null) userService.updateBio(id, bio);
+        return userService.getUserById(id);
     }
-
-    @GetMapping("/profile")
-    public String profile(HttpServletRequest servletRequest) {
-        return userService.getProfile(servletRequest.getSession(false));
-    }
-
-
     @GetMapping("/logout")
     public void logout(HttpSession session) {
         session.invalidate();
+    }
+
+    @GetMapping("/me")
+    public UserDTO getCurrentUser(org.springframework.security.core.Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+             throw new RuntimeException("Not authenticated");
+        }
+        
+        Object principal = authentication.getPrincipal();
+        if (principal instanceof org.springframework.security.oauth2.core.user.OAuth2User) {
+             org.springframework.security.oauth2.core.user.OAuth2User oauth2User = (org.springframework.security.oauth2.core.user.OAuth2User) principal;
+             String email = (String) oauth2User.getAttributes().get("email");
+             if (email == null) {
+                 String login = (String) oauth2User.getAttributes().get("login");
+                 email = login + "@github.com";
+             }
+             return userService.getUserByEmail(email);
+        }
+        throw new RuntimeException("Unknown authentication type");
     }
 }

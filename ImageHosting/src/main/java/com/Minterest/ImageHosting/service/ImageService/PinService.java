@@ -5,6 +5,7 @@ import com.Minterest.ImageHosting.model.AppFeatures.RedisPubSubNotification;
 import com.Minterest.ImageHosting.model.Pin;
 import com.Minterest.ImageHosting.model.SavedPin;
 import com.Minterest.ImageHosting.model.User;
+import com.Minterest.ImageHosting.repo.mysql.CommentRepository;
 import com.Minterest.ImageHosting.repo.mysql.PinLikeRepository;
 import com.Minterest.ImageHosting.repo.mysql.PinRepository;
 import com.Minterest.ImageHosting.repo.mysql.SavedPinRepository;
@@ -15,7 +16,6 @@ import com.Minterest.ImageHosting.service.RedisFeedService;
 import com.Minterest.ImageHosting.service.RedisPublisherService;
 import com.Minterest.ImageHosting.service.PinSearchService;
 import com.Minterest.ImageHosting.exception.ResourceNotFoundException;
-import jakarta.mail.MessagingException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -38,6 +38,7 @@ import java.util.concurrent.TimeUnit;
 public class PinService {
 
     private final PinRepository pinRepository;
+    private final CommentRepository commentRepository;
     private final UserRepository userRepository;
     private final PinServiceInterface s3FileService;
     private final PinLikeRepository pinLikeRepository;
@@ -67,9 +68,9 @@ public class PinService {
         String limitKey = UPLOAD_LIMIT_KEY + userId + ":" + LocalDate.now();
         Long uploadCount = redisTemplate.opsForValue().increment(limitKey);
         
-        if (uploadCount != null && uploadCount > 3) {
+        if (uploadCount != null && uploadCount > 20) {
             log.warn("User {} exceeded daily upload limit", userId);
-            throw new RuntimeException("You have reached your daily limit of 3 pins. Try again tomorrow!");
+            throw new RuntimeException("You have reached your daily limit of 20 pins. Try again tomorrow!");
         }
         
         if (uploadCount != null && uploadCount == 1) {
@@ -115,6 +116,9 @@ public class PinService {
 
         // Sync to Elasticsearch
         pinSearchService.indexPin(savedPin);
+        
+        // Add to trending feed with base score 0.5
+        redisFeedService.updatePinScore(savedPin.getPinId(), 0.5);
 
         return savedPin;
     }
@@ -154,16 +158,23 @@ public class PinService {
         Pin pin = pinRepository.findById(pinId)
                 .orElseThrow(() -> new ResourceNotFoundException("Pin not found"));
 
-        // Delete image from S3
+        // 1. Delete image from S3
         String key = extractKeyFromUrl(pin.getPinUrl());
         if (key != null) {
             s3FileService.deleteFile(key);
         }
 
-        // Remove from Elasticsearch index
+        // 2. Remove from Elasticsearch index
         pinSearchService.removePinFromIndex(pinId);
 
-        // Delete pin from database (comments will be cascade deleted)
+        // 3. Clear from Redis feeds
+        redisFeedService.removePinFromFeed(pinId);
+
+        // 4. Delete related records that might block DB deletion
+        pinLikeRepository.deleteByPin(pin);
+        savedPinRepository.deleteByPin(pin);
+        
+        // 5. Delete pin from database (comments will be cascade deleted via JPA)
         pinRepository.delete(pin);
         log.info("Pin deleted successfully: {}", pinId);
     }
@@ -179,23 +190,116 @@ public class PinService {
 
     @Transactional(readOnly = true)
     public Pin getPinWithDetails(UUID pinId) {
-        return pinRepository.findById(pinId)
+        Pin pin = pinRepository.findById(pinId)
                 .orElseThrow(() -> new ResourceNotFoundException("Pin not found"));
+        
+        // Filter to only top-level comments to prevent duplicate rendering in frontend
+        pin.setCommentsList(commentRepository.findByPinAndParentCommentIsNull(pin));
+        
+        refreshPinUrl(pin); // Ensure URL is fresh
+        return pin;
     }
 
-    // Helper method to extract S3 key from URL
-    private String extractKeyFromUrl(String url) {
-        if (url == null) return null;
-        try {
-            // For presigned URLs
-            if (url.contains("?")) {
-                url = url.substring(0, url.indexOf("?"));
+    private void refreshPinUrl(Pin pin) {
+        if (pin == null || pin.getPinUrl() == null) {
+            System.out.println("DEBUG: Pin or PinURL is NULL for id: " + (pin != null ? pin.getPinId() : "unknown"));
+            return;
+        }
+        String currentUrl = pin.getPinUrl();
+        String key = extractKeyFromUrl(currentUrl);
+        
+        System.out.println("DEBUG: Refreshing URL for Pin: " + pin.getPinId() + " [" + pin.getTitle() + "] Key: " + key);
+        
+        if (key != null && !key.isEmpty()) {
+            try {
+                String freshUrl = s3FileService.getPresignedUrl(key, 60);
+                pin.setPinUrl(freshUrl);
+                log.info("Successfully refreshed S3 URL for Pin: {} [{}]", pin.getPinId(), pin.getTitle());
+            } catch (Exception e) {
+                System.out.println("DEBUG: Failed refresh for Key: " + key + ". Error: " + e.getMessage());
+                log.error("Failed to refresh S3 URL for Pin: {}. Key: {}. Error: {}", pin.getPinId(), key, e.getMessage());
             }
-            // Extract key after bucket name
-            String bucketPattern = "https://.*?\\.s3\\.amazonaws\\.com/";
-            return url.replaceFirst(bucketPattern, "");
+        } else {
+            System.out.println("DEBUG: Key extraction failed for URL: " + currentUrl);
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public com.Minterest.ImageHosting.model.AppFeatures.Feed getPinsByUser(UUID userId, int page, int size) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        org.springframework.data.domain.PageRequest pageRequest = org.springframework.data.domain.PageRequest.of(page, size, org.springframework.data.domain.Sort.by("uploadedAt").descending());
+        org.springframework.data.domain.Page<Pin> pinPage = pinRepository.findByUser(user, pageRequest);
+        List<Pin> pins = pinPage.getContent();
+        pins.forEach(this::refreshPinUrl);
+        return new com.Minterest.ImageHosting.model.AppFeatures.Feed(pins, page, size, (int) pinPage.getTotalElements());
+    }
+
+    @Transactional(readOnly = true)
+    public com.Minterest.ImageHosting.model.AppFeatures.Feed getTrendingFeed(int page, int size) {
+        java.util.Set<java.util.UUID> trendingPinIds = redisFeedService.getTrendingPinIds(page, size);
+        List<Pin> trendingPins;
+        if (trendingPinIds.isEmpty()) {
+            org.springframework.data.domain.PageRequest pageRequest =
+                org.springframework.data.domain.PageRequest.of(page, size,
+                    org.springframework.data.domain.Sort.by("uploadedAt").descending());
+            trendingPins = pinRepository.findAll(pageRequest).getContent();
+            trendingPins.forEach(p -> redisFeedService.updatePinScore(p.getPinId(), 0.5));
+        } else {
+            trendingPins = trendingPinIds.stream()
+                .map(id -> {
+                    try { return pinRepository.findById(id).orElse(null); }
+                    catch (Exception e) { return null; }
+                })
+                .filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.toList());
+        }
+        trendingPins.forEach(this::refreshPinUrl);
+        return new com.Minterest.ImageHosting.model.AppFeatures.Feed(trendingPins, page, size, trendingPins.size());
+    }
+
+    @Transactional(readOnly = true)
+    public com.Minterest.ImageHosting.model.AppFeatures.Feed searchPins(String query, int page, int size) {
+        org.springframework.data.domain.PageRequest pageRequest =
+            org.springframework.data.domain.PageRequest.of(page, size,
+                org.springframework.data.domain.Sort.by("uploadedAt").descending());
+        List<Pin> results;
+        if (query == null || query.trim().isEmpty()) {
+            results = pinRepository.findAll(pageRequest).getContent();
+        } else {
+            String q = query.trim();
+            results = pinRepository
+                .findByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase(q, q, pageRequest)
+                .getContent();
+        }
+        results.forEach(this::refreshPinUrl);
+        return new com.Minterest.ImageHosting.model.AppFeatures.Feed(results, page, size, results.size());
+    }
+
+    private String extractKeyFromUrl(String url) {
+        if (url == null || url.trim().isEmpty()) return null;
+        try {
+            // 1. Remove query parameters if present
+            String cleanUrl = url.contains("?") ? url.substring(0, url.indexOf("?")) : url;
+            
+            // 2. Use URI for path extraction
+            java.net.URI uri = new java.net.URI(cleanUrl);
+            String path = uri.getPath();
+            if (path == null) return null;
+
+            if (path.startsWith("/")) path = path.substring(1);
+            
+            // Trim bucketName just in case there's whitespace from properties
+            String trimmedBucket = bucketName != null ? bucketName.trim() : null;
+            
+            // 3. Handle both virtual-hosted and path-style URLs
+            if (trimmedBucket != null && path.startsWith(trimmedBucket + "/")) {
+                path = path.substring(trimmedBucket.length() + 1);
+            }
+            
+            return path;
         } catch (Exception e) {
-            log.error("Failed to extract key from URL: {}", url, e);
+            log.error("Failed to extract key from URL: {}", url);
             return null;
         }
     }
@@ -237,8 +341,8 @@ public class PinService {
                 String likerName = user.getUsername();
                 emailService.sendLikeEmail(pinOwnerEmail, likerName + " liked your pin: " + pin.getTitle());
                 log.info("Sent like notification email to {}", pinOwnerEmail);
-            } catch (MessagingException e) {
-                log.error("Failed to send like notification email", e);
+            } catch (Exception e) {
+                log.error("NON-BLOCKING: Failed to send like notification email: {}", e.getMessage());
             }
         }
     }
@@ -323,5 +427,28 @@ public class PinService {
 
             log.info("User {} unsaved Pin {}", userId, pinId);
         });
+    }
+
+    @Transactional(readOnly = true)
+    public boolean isPinSavedByUser(UUID pinId, UUID userId) {
+        Pin pin = pinRepository.findById(pinId).orElse(null);
+        User user = userRepository.findById(userId).orElse(null);
+        if (pin == null || user == null) return false;
+        return savedPinRepository.findByUserAndPin(user, pin).isPresent();
+    }
+
+    @Transactional(readOnly = true)
+    public com.Minterest.ImageHosting.model.AppFeatures.Feed getSavedPinsByUser(UUID userId, int page, int size) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        org.springframework.data.domain.PageRequest pageRequest = org.springframework.data.domain.PageRequest.of(page, size);
+        org.springframework.data.domain.Page<SavedPin> savedPage = savedPinRepository.findByUser(user, pageRequest);
+
+        List<Pin> pins = savedPage.getContent().stream()
+                .map(SavedPin::getPin)
+                .collect(java.util.stream.Collectors.toList());
+
+        pins.forEach(this::refreshPinUrl);
+        return new com.Minterest.ImageHosting.model.AppFeatures.Feed(pins, page, size, (int) savedPage.getTotalElements());
     }
 }

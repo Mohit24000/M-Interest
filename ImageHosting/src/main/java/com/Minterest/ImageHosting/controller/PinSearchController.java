@@ -95,4 +95,11 @@ public class PinSearchController {
         }
         return ResponseEntity.notFound().build();
     }
+
+    @GetMapping("/suggestions")
+    public ResponseEntity<List<String>> getSuggestions(@RequestParam String q) {
+        return ResponseEntity.ok(pinSearchService.getSuggestions(q));
+    
+    }
 }
+

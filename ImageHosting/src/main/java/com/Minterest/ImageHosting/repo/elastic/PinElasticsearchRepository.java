@@ -21,15 +21,13 @@ public interface PinElasticsearchRepository extends ElasticsearchRepository<PinD
     Page<PinDocument> findByTagsIn(List<String> tags, Pageable pageable);
 
     // Combined search using Elasticsearch query
-    @Query("{\"bool\": {\"should\": [" +
-            "{\"match\": {\"title\": {\"query\": \"?0\", \"fuzziness\": \"AUTO\"}}}," +
-            "{\"match\": {\"description\": {\"query\": \"?0\", \"fuzziness\": \"AUTO\"}}}," +
-            "{\"match\": {\"tags\": {\"query\": \"?0\", \"fuzziness\": \"AUTO\"}}}" +
-            "]}}")
+    @Query("{\"multi_match\": {" +
+            "\"query\": \"?0\"," + "\"fields\": [\"title\", \"description\", \"tags\"]," +
+            "\"fuzziness\": \"AUTO\"" +
+            "}}")
     Page<PinDocument> searchPins(String searchTerm, Pageable pageable);
-    // Find by user
-    Page<PinDocument> findByUserId(UUID userId, Pageable pageable);
+    // Simple search by userId
+    Page<PinDocument> findByUserId(String userId, Pageable pageable);
 
-    // Delete by pinId
-    void deleteByPinId(UUID pinId);
+    void deleteByPinId(String pinId);
 }

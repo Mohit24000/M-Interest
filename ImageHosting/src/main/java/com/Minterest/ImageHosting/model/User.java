@@ -6,6 +6,8 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
@@ -18,6 +20,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @Data
 @Entity
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class User {
 
     @Id
@@ -45,13 +48,16 @@ public class User {
     private String profileImageUrl;
     private int followerCount;
 
+    @JsonIgnore
     @ToString.Exclude
     @OneToMany(mappedBy = "following")
     private List<Follower> followerList = new ArrayList<>();
 
+    @JsonIgnore
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL)
     private List<Pin> pinList = new ArrayList<>();
 
+    @JsonIgnore
     @ToString.Exclude
     @OneToMany(mappedBy = "user")
     private List<PinLike> likedPins = new ArrayList<>();

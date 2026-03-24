@@ -7,12 +7,11 @@ import com.Minterest.ImageHosting.model.Pin;
 import com.Minterest.ImageHosting.repo.mysql.CommentRepository;
 import com.Minterest.ImageHosting.repo.mysql.PinRepository;
 import com.Minterest.ImageHosting.repo.mysql.UserRepository;
-import com.Minterest.ImageHosting.service.EmailService;
 import com.Minterest.ImageHosting.exception.ResourceNotFoundException;
-import jakarta.mail.MessagingException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,6 +32,7 @@ public class CommentService {
     private final EmailService emailService;
 
     @Transactional
+    @CacheEvict(value = {"pin", "pinComments", "replies"}, allEntries = true)
     public Comments addCommentToPin(UUID pinId, String content, UUID userId) {
         Pin pin = pinRepository.findById(pinId)
                 .orElseThrow(() -> new ResourceNotFoundException("Pin not found with ID: " + pinId));
@@ -40,7 +40,7 @@ public class CommentService {
         Comments comment = new Comments();
         comment.setContent(content);
         comment.setPin(pin);
-        // comment.setUserId(userId); // You might want to add userId field to Comments entity
+        comment.setUser(userRepository.findById(userId).orElse(null));
 
         Comments savedComment = commentRepository.save(comment);
         log.info("Comment added to pin: {} with content: {}", pinId, content);
@@ -67,15 +67,16 @@ public class CommentService {
             
             emailService.sendCommentEmail(pinOwnerEmail, commenterName + " commented: " + content);
             log.info("Sent comment notification email to {}", pinOwnerEmail);
-        } catch (MessagingException e) {
-            log.error("Failed to send comment notification email", e);
+        } catch (Exception e) {
+            log.error("NON-BLOCKING: Failed to send comment notification email: {}", e.getMessage());
         }
 
         return savedComment;
     }
 
     @Transactional
-    public Comments addReplyToComment(Long parentCommentId, String content, UUID pinId) {
+    @CacheEvict(value = {"pin", "pinComments", "replies"}, allEntries = true)
+    public Comments addReplyToComment(Long parentCommentId, String content, UUID pinId, UUID userId) {
         // Verify pin exists
         Pin pin = pinRepository.findById(pinId)
                 .orElseThrow(() -> new ResourceNotFoundException("Pin not found with ID: " + pinId));
@@ -87,6 +88,7 @@ public class CommentService {
         reply.setContent(content);
         reply.setParentComment(parentComment);
         reply.setPin(pin); // Important: link reply to pin
+        reply.setUser(userRepository.findById(userId).orElse(null));
 
         Comments savedReply = commentRepository.save(reply);
         log.info("Reply added to comment: {} on pin: {}", parentCommentId, pinId);
@@ -109,8 +111,8 @@ public class CommentService {
             String pinOwnerEmail = pin.getUser().getEmail();
             emailService.sendCommentEmail(pinOwnerEmail, "Someone replied: " + content);
             log.info("Sent reply notification email to {}", pinOwnerEmail);
-        } catch (MessagingException e) {
-            log.error("Failed to send reply notification email", e);
+        } catch (Exception e) {
+            log.error("NON-BLOCKING: Failed to send reply notification email: {}", e.getMessage());
         }
 
         return savedReply;
@@ -131,15 +133,24 @@ public class CommentService {
     }
 
     @Transactional
+    @CacheEvict(value = {"pin", "pinComments", "replies"}, allEntries = true)
     public void deleteComment(Long commentId) {
         Comments comment = commentRepository.findById(commentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Comment not found with ID: " + commentId));
+
+        if (comment.getParentComment() != null) {
+            comment.getParentComment().getReplies().remove(comment);
+        }
+        if (comment.getPin() != null) {
+            comment.getPin().getCommentsList().remove(comment);
+        }
 
         commentRepository.delete(comment);
         log.info("Comment deleted: {}", commentId);
     }
 
     @Transactional
+    @CacheEvict(value = {"pin", "pinComments", "replies"}, allEntries = true)
     public Comments updateComment(Long commentId, String newContent) {
         Comments comment = commentRepository.findById(commentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Comment not found with ID: " + commentId));

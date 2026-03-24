@@ -13,4 +13,7 @@ public interface SavedPinRepository extends JpaRepository<SavedPin, UUID> {
 
 
     long countByPin(Pin pin);
+
+    void deleteByPin(Pin pin);
+    org.springframework.data.domain.Page<SavedPin> findByUser(User user, org.springframework.data.domain.Pageable pageable);
 }
