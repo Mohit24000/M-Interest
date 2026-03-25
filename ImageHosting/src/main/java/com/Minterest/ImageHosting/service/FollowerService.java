@@ -46,16 +46,6 @@ public class FollowerService {
 
         log.info("{} is now following {}", followerUsername, followingUsername);
 
-        // dispatch to Redis Pub/Sub
-        RedisPubSubNotification notification = new RedisPubSubNotification(
-                "follow",
-                "Followed_You",
-                followerUser.getUserId(),
-                followingUser.getUserId(),
-                java.time.LocalDateTime.now()
-        );
-        redisPublisherService.publishFollowEvent(notification);
-
         return followerUsername + " is now following " + followingUsername;
     }
 
@@ -76,16 +66,6 @@ public class FollowerService {
             }
 
             log.info("{} stopped following {}", followerUsername, followingUsername);
-
-            // dispatch to Redis Pub/Sub
-            RedisPubSubNotification notification = new RedisPubSubNotification(
-                    "follow",
-                    "UnFollowed_You",
-                    followerUser.getUserId(),
-                    followingUser.getUserId(),
-                    java.time.LocalDateTime.now()
-            );
-            redisPublisherService.publishFollowEvent(notification);
         });
 
         return followerUsername + " unfollowed " + followingUsername;

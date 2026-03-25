@@ -31,19 +31,27 @@ public class RedisFeedService {
     /**
      * Gets the top trending pin IDs.
      */
-    public Set<UUID> getTrendingPinIds(int page, int size) {
+    public java.util.List<UUID> getTrendingPinIds(int page, int size) {
         long start = (long) page * size;
         long end = start + size - 1;
         
         Set<String> pinIds = redisTemplate.opsForZSet().reverseRange(TRENDING_PINS_KEY, start, end);
         
         if (pinIds == null) {
-            return Set.of();
+            return java.util.List.of();
         }
         
         return pinIds.stream()
                 .map(UUID::fromString)
-                .collect(Collectors.toSet());
+                .collect(java.util.stream.Collectors.toList());
+    }
+
+    /**
+     * Gets the total number of pins in the trending feed.
+     */
+    public long getTrendingCount() {
+        Long count = redisTemplate.opsForZSet().zCard(TRENDING_PINS_KEY);
+        return count != null ? count : 0;
     }
 
     /**

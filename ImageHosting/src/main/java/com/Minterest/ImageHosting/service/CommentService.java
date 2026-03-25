@@ -29,7 +29,6 @@ public class CommentService {
     private final RedisFeedService redisFeedService;
     private final RedisPublisherService redisPublisherService;
     private final UserRepository userRepository;
-    private final EmailService emailService;
 
     @Transactional
     @CacheEvict(value = {"pin", "pinComments", "replies"}, allEntries = true)
@@ -47,29 +46,8 @@ public class CommentService {
 
         // Update trending score (Comments weigh +3)
         redisFeedService.updatePinScore(pinId, 3.0);
-        
-        // dispatch to redis Pub/Sub for
-        RedisPubSubNotification notification = new RedisPubSubNotification(
-            "comment", 
-            "ADD_COMMENT", 
-            userId, 
-            pinId, 
-            java.time.LocalDateTime.now()
-        );
-        redisPublisherService.publishCommentEvent(notification);
 
-        // Send Email Notification to Pin Owner
-        try {
-            String pinOwnerEmail = pin.getUser().getEmail();
-            String commenterName = userRepository.findById(userId)
-                    .map(u -> u.getUsername())
-                    .orElse("Someone");
-            
-            emailService.sendCommentEmail(pinOwnerEmail, commenterName + " commented: " + content);
-            log.info("Sent comment notification email to {}", pinOwnerEmail);
-        } catch (Exception e) {
-            log.error("NON-BLOCKING: Failed to send comment notification email: {}", e.getMessage());
-        }
+
 
         return savedComment;
     }
@@ -95,25 +73,8 @@ public class CommentService {
 
         // Update trending score for reply as well
         redisFeedService.updatePinScore(pinId, 2.0);
-        
-        // Dispatch to Redis Pub/Sub
-        RedisPubSubNotification notification = new RedisPubSubNotification(
-            "comment", 
-            "REPLY_COMMENT", 
-            null, // Anonymous user
-            pinId, 
-            java.time.LocalDateTime.now()
-        );
-        redisPublisherService.publishCommentEvent(notification);
 
-        // Send Email Notification to Pin Owner
-        try {
-            String pinOwnerEmail = pin.getUser().getEmail();
-            emailService.sendCommentEmail(pinOwnerEmail, "Someone replied: " + content);
-            log.info("Sent reply notification email to {}", pinOwnerEmail);
-        } catch (Exception e) {
-            log.error("NON-BLOCKING: Failed to send reply notification email: {}", e.getMessage());
-        }
+
 
         return savedReply;
     }

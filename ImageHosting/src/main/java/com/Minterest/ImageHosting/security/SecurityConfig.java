@@ -1,6 +1,7 @@
 package com.Minterest.ImageHosting.security;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -12,13 +13,18 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import java.util.Arrays;
+import java.util.List;
 
 @Configuration
 @EnableWebSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
 
+    @Value("${app.frontend.url:http://localhost:5173}")
+    private String frontendUrl;
+
     private final CustomOAuth2UserService customOAuth2UserService;
+    private final CustomOidcUserService customOidcUserService;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -29,23 +35,20 @@ public class SecurityConfig {
                 .requestMatchers("/api/user/resister", "/api/user/login").permitAll()
                 .requestMatchers("/oauth2/**", "/login/**").permitAll()
                 .requestMatchers("/api/user/me", "/api/user/profile", "/api/user/logout").authenticated()
-                .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/pins/trending", "/api/pins/**", "/api/search/**").permitAll()
+                .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/stream", "/api/pins/trending", "/api/pins/**", "/api/search/**").permitAll()
                 .requestMatchers(org.springframework.http.HttpMethod.PATCH, "/api/user/**").authenticated()
                 .anyRequest().authenticated()
             )
             .oauth2Login(oauth2 -> oauth2
                 .userInfoEndpoint(userInfo -> userInfo
                     .userService(customOAuth2UserService)
+                    .oidcUserService(customOidcUserService)
                 )
-                .defaultSuccessUrl("http://localhost:5173/", true)
-            )
-            .formLogin(form -> form
-                .loginPage("/login")
-                .permitAll()
+                .defaultSuccessUrl(frontendUrl + "/", true)
             )
             .logout(logout -> logout
                 .logoutUrl("/api/user/logout")
-                .logoutSuccessUrl("http://localhost:5173/login")
+                .logoutSuccessUrl(frontendUrl + "/login")
                 .invalidateHttpSession(true)
                 .deleteCookies("JSESSIONID")
                 .permitAll()
@@ -57,7 +60,15 @@ public class SecurityConfig {
     @Bean
     CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(Arrays.asList("http://localhost:5173", "http://127.0.0.1:5173"));
+        // Allow local dev origins + the production frontend URL from env
+        List<String> allowedOrigins = Arrays.asList(
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://localhost",
+            "http://localhost:80",
+            frontendUrl
+        );
+        configuration.setAllowedOrigins(allowedOrigins);
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList("*"));
         configuration.setAllowCredentials(true);

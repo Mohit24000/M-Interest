@@ -138,4 +138,9 @@ public class PinController {
         Feed feed = pinService.getSavedPinsByUser(userId, page, size);
         return ResponseEntity.ok(feed);
     }
+
+    @GetMapping("/version")
+    public ResponseEntity<String> getVersion() {
+        return ResponseEntity.ok("IMAGE_HOSTING_V2_DEPLOYED");
+    }
 }

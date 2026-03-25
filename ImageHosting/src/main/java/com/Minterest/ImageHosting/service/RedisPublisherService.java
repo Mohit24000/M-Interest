@@ -1,6 +1,7 @@
 package com.Minterest.ImageHosting.service;
 
 import com.Minterest.ImageHosting.model.AppFeatures.RedisPubSubNotification;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -12,19 +13,15 @@ import org.springframework.stereotype.Service;
 public class RedisPublisherService {
 
     private final RedisTemplate<String, Object> redisTemplate;
+    private final ObjectMapper objectMapper;
 
-    public void publishLikeEvent(RedisPubSubNotification notification) {
-        log.info("Publishing Like Event: {}", notification);
-        redisTemplate.convertAndSend("like", notification);
-    }
-
-    public void publishCommentEvent(RedisPubSubNotification notification) {
-        log.info("Publishing Comment Event: {}", notification);
-        redisTemplate.convertAndSend("comment", notification);
-    }
-
-    public void publishFollowEvent(RedisPubSubNotification notification) {
-        log.info("Publishing Follow Event: {}", notification);
-        redisTemplate.convertAndSend("follow", notification);
+    public void publishPinUploadEvent(RedisPubSubNotification notification) {
+        try {
+            String jsonMessage = objectMapper.writeValueAsString(notification);
+            log.info("Publishing Pin Upload Event (JSON): {}", jsonMessage);
+            redisTemplate.convertAndSend("pin_upload", jsonMessage);
+        } catch (Exception e) {
+            log.error("Failed to serialize notification to JSON", e);
+        }
     }
 }

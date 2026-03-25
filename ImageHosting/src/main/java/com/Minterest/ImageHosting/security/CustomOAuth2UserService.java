@@ -70,6 +70,10 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
             throw new RuntimeException("Email not found from OAuth2 provider");
         }
 
+        if (name == null || name.trim().isEmpty()) {
+            name = email.split("@")[0];
+        }
+
         Optional<User> userOptional = userRepository.findByEmailIgnoreCase(email);
         User user;
 

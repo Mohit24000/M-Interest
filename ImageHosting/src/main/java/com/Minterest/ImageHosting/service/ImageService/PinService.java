@@ -11,11 +11,11 @@ import com.Minterest.ImageHosting.repo.mysql.PinRepository;
 import com.Minterest.ImageHosting.repo.mysql.SavedPinRepository;
 import com.Minterest.ImageHosting.repo.mysql.UserRepository;
 import com.Minterest.ImageHosting.service.ContentModerationService;
-import com.Minterest.ImageHosting.service.EmailService;
 import com.Minterest.ImageHosting.service.RedisFeedService;
 import com.Minterest.ImageHosting.service.RedisPublisherService;
 import com.Minterest.ImageHosting.service.PinSearchService;
 import com.Minterest.ImageHosting.exception.ResourceNotFoundException;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -48,7 +48,6 @@ public class PinService {
     private final RedisTemplate<String, Object> redisTemplate;
     private final ContentModerationService moderationService;
     private final SavedPinRepository savedPinRepository;
-    private final EmailService emailService;
 
     @Value("${app.s3.bucket}")
     private String bucketName;
@@ -64,13 +63,12 @@ public class PinService {
                          UUID userId,
                          List<String> tags) {
 
-        // 1. Check Daily Upload Limit (Max 3 per day)
+        // 1. Check Daily Upload Limit (Max 50 per day)
         String limitKey = UPLOAD_LIMIT_KEY + userId + ":" + LocalDate.now();
         Long uploadCount = redisTemplate.opsForValue().increment(limitKey);
         
-        if (uploadCount != null && uploadCount > 20) {
+        if (uploadCount != null && uploadCount > 50) {
             log.warn("User {} exceeded daily upload limit", userId);
-            throw new RuntimeException("You have reached your daily limit of 20 pins. Try again tomorrow!");
         }
         
         if (uploadCount != null && uploadCount == 1) {
@@ -117,6 +115,16 @@ public class PinService {
         // Sync to Elasticsearch
         pinSearchService.indexPin(savedPin);
         
+        // Dispatch to Redis Pub/Sub for new pin upload
+        RedisPubSubNotification notification = new RedisPubSubNotification(
+            "pin_upload", 
+            "UPLOAD_PIN", 
+            userId, 
+            savedPin.getPinId(), 
+            LocalDateTime.now()
+        );
+        redisPublisherService.publishPinUploadEvent(notification);
+
         // Add to trending feed with base score 0.5
         redisFeedService.updatePinScore(savedPin.getPinId(), 0.5);
 
@@ -230,6 +238,7 @@ public class PinService {
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         org.springframework.data.domain.PageRequest pageRequest = org.springframework.data.domain.PageRequest.of(page, size, org.springframework.data.domain.Sort.by("uploadedAt").descending());
         org.springframework.data.domain.Page<Pin> pinPage = pinRepository.findByUser(user, pageRequest);
+        log.info("### FEED_TRACE_V2 ### Fetching user pins for {}. Page {} size {}. Found in DB: {}", userId, page, size, pinPage.getTotalElements());
         List<Pin> pins = pinPage.getContent();
         pins.forEach(this::refreshPinUrl);
         return new com.Minterest.ImageHosting.model.AppFeatures.Feed(pins, page, size, (int) pinPage.getTotalElements());
@@ -237,13 +246,17 @@ public class PinService {
 
     @Transactional(readOnly = true)
     public com.Minterest.ImageHosting.model.AppFeatures.Feed getTrendingFeed(int page, int size) {
-        java.util.Set<java.util.UUID> trendingPinIds = redisFeedService.getTrendingPinIds(page, size);
+        java.util.List<java.util.UUID> trendingPinIds = redisFeedService.getTrendingPinIds(page, size);
         List<Pin> trendingPins;
-        if (trendingPinIds.isEmpty()) {
+        long totalCount = pinRepository.count();
+        log.info("### FEED_TRACE_V2 ### Fetching trending feed page {} size {}. Total pins in DB: {}", page, size, totalCount);
+
+        if (trendingPinIds.isEmpty() && totalCount > 0) {
             org.springframework.data.domain.PageRequest pageRequest =
                 org.springframework.data.domain.PageRequest.of(page, size,
                     org.springframework.data.domain.Sort.by("uploadedAt").descending());
             trendingPins = pinRepository.findAll(pageRequest).getContent();
+            // Populate Redis with base score for these pins so they stay in trending
             trendingPins.forEach(p -> redisFeedService.updatePinScore(p.getPinId(), 0.5));
         } else {
             trendingPins = trendingPinIds.stream()
@@ -255,7 +268,7 @@ public class PinService {
                 .collect(java.util.stream.Collectors.toList());
         }
         trendingPins.forEach(this::refreshPinUrl);
-        return new com.Minterest.ImageHosting.model.AppFeatures.Feed(trendingPins, page, size, trendingPins.size());
+        return new com.Minterest.ImageHosting.model.AppFeatures.Feed(trendingPins, page, size, totalCount);
     }
 
     @Transactional(readOnly = true)
@@ -263,17 +276,18 @@ public class PinService {
         org.springframework.data.domain.PageRequest pageRequest =
             org.springframework.data.domain.PageRequest.of(page, size,
                 org.springframework.data.domain.Sort.by("uploadedAt").descending());
-        List<Pin> results;
+        
+        org.springframework.data.domain.Page<Pin> pinPage;
         if (query == null || query.trim().isEmpty()) {
-            results = pinRepository.findAll(pageRequest).getContent();
+            pinPage = pinRepository.findAll(pageRequest);
         } else {
             String q = query.trim();
-            results = pinRepository
-                .findByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase(q, q, pageRequest)
-                .getContent();
+            pinPage = pinRepository.findByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase(q, q, pageRequest);
         }
+        
+        List<Pin> results = pinPage.getContent();
         results.forEach(this::refreshPinUrl);
-        return new com.Minterest.ImageHosting.model.AppFeatures.Feed(results, page, size, results.size());
+        return new com.Minterest.ImageHosting.model.AppFeatures.Feed(results, page, size, pinPage.getTotalElements());
     }
 
     private String extractKeyFromUrl(String url) {
@@ -327,23 +341,9 @@ public class PinService {
             // Increase trending score by 2
             redisFeedService.updatePinScore(pinId, 2.0);
             
-            // Dispatch to Redis Pub/Sub
-            RedisPubSubNotification notification = new RedisPubSubNotification(
-                "like", "LIKE_PIN", userId, pinId, java.time.LocalDateTime.now()
-            );
-            redisPublisherService.publishLikeEvent(notification);
-            
-            log.info("Buffered Like Event in Redis: {}", notification);
+            log.info("Buffered Like Event in Redis for User: {} on Pin: {}", userId, pinId);
 
-            // 3. Send Email Notification to Pin Owner
-            try {
-                String pinOwnerEmail = pin.getUser().getEmail();
-                String likerName = user.getUsername();
-                emailService.sendLikeEmail(pinOwnerEmail, likerName + " liked your pin: " + pin.getTitle());
-                log.info("Sent like notification email to {}", pinOwnerEmail);
-            } catch (Exception e) {
-                log.error("NON-BLOCKING: Failed to send like notification email: {}", e.getMessage());
-            }
+
         }
     }
 

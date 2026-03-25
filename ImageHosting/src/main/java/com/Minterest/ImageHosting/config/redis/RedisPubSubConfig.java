@@ -14,13 +14,8 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
 @Configuration
 public class RedisPubSubConfig {
     @Bean
-    ChannelTopic likeTopic(){
-        return new ChannelTopic("like");
-    }
-
-    @Bean
-    ChannelTopic commentTopic(){
-        return new ChannelTopic("comment");
+    ChannelTopic pinUploadTopic(){
+        return new ChannelTopic("pin_upload");
     }
 
     @Bean
@@ -36,23 +31,15 @@ public class RedisPubSubConfig {
     }
 
     @Bean
-    ChannelTopic followTopic(){
-        return new ChannelTopic("follow");
-    }
-    @Bean
     public RedisMessageListenerContainer config(
             RedisConnectionFactory factory,
             RedisSubscriber subscriber,
-            ChannelTopic likeTopic,
-            ChannelTopic commentTopic,
-            ChannelTopic followTopic) {
+            ChannelTopic pinUploadTopic) {
 
         RedisMessageListenerContainer container = new RedisMessageListenerContainer();
         container.setConnectionFactory(factory);
 
-        container.addMessageListener(subscriber, likeTopic);
-        container.addMessageListener(subscriber, commentTopic);
-        container.addMessageListener(subscriber, followTopic);
+        container.addMessageListener(subscriber, pinUploadTopic);
 
         return container;
     }
