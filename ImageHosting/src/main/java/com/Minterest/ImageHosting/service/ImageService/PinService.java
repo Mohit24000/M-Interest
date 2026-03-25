@@ -46,6 +46,7 @@ public class PinService {
     private final RedisPublisherService redisPublisherService;
     private final PinSearchService pinSearchService;
     private final RedisTemplate<String, Object> redisTemplate;
+    private final org.springframework.data.redis.core.StringRedisTemplate stringRedisTemplate;
     private final ContentModerationService moderationService;
     private final SavedPinRepository savedPinRepository;
 
@@ -65,16 +66,16 @@ public class PinService {
 
         // 1. Check Daily Upload Limit (Max 50 per day)
         String limitKey = UPLOAD_LIMIT_KEY + userId + ":" + LocalDate.now();
-        Long uploadCount = redisTemplate.opsForValue().increment(limitKey);
+        Long uploadCount = stringRedisTemplate.opsForValue().increment(limitKey);
 
         if (uploadCount != null && uploadCount > 3) {
             log.warn("User {} exceeded daily upload limit", userId);
-            redisTemplate.opsForValue().decrement(limitKey);
+            stringRedisTemplate.opsForValue().decrement(limitKey);
             throw new com.Minterest.ImageHosting.exception.BadRequestException("Daily upload limit exceeded. You can only upload 3 pins per day.");
         }
 
         if (uploadCount != null && uploadCount == 1) {
-            redisTemplate.expire(limitKey, 24, TimeUnit.HOURS);
+            stringRedisTemplate.expire(limitKey, 24, TimeUnit.HOURS);
         }
 
         // Get user
@@ -96,7 +97,7 @@ public class PinService {
         if (!moderationService.isImageSafe(bucketName, s3Key)) {
             s3FileService.deleteFile(s3Key); // Delete from S3 immediately
             // Decrement limit if upload failed due to moderation
-            redisTemplate.opsForValue().decrement(limitKey);
+            stringRedisTemplate.opsForValue().decrement(limitKey);
             throw new RuntimeException("Upload failed: Inappropriate content detected.");
         }
 
