@@ -67,7 +67,7 @@ public class PinService {
         String limitKey = UPLOAD_LIMIT_KEY + userId + ":" + LocalDate.now();
         Long uploadCount = redisTemplate.opsForValue().increment(limitKey);
         
-        if (uploadCount != null && uploadCount > 50) {
+        if (uploadCount != null && uploadCount > 3) {
             log.warn("User {} exceeded daily upload limit", userId);
         }
         
