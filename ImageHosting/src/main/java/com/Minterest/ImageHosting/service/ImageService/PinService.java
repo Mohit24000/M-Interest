@@ -66,11 +66,13 @@ public class PinService {
         // 1. Check Daily Upload Limit (Max 50 per day)
         String limitKey = UPLOAD_LIMIT_KEY + userId + ":" + LocalDate.now();
         Long uploadCount = redisTemplate.opsForValue().increment(limitKey);
-        
+
         if (uploadCount != null && uploadCount > 3) {
             log.warn("User {} exceeded daily upload limit", userId);
+            redisTemplate.opsForValue().decrement(limitKey);
+            throw new RuntimeException("Daily upload limit exceeded. You can only upload 3 pins per day.");
         }
-        
+
         if (uploadCount != null && uploadCount == 1) {
             redisTemplate.expire(limitKey, 24, TimeUnit.HOURS);
         }
@@ -114,13 +116,13 @@ public class PinService {
 
         // Sync to Elasticsearch
         pinSearchService.indexPin(savedPin);
-        
+
         // Dispatch to Redis Pub/Sub for new pin upload
         RedisPubSubNotification notification = new RedisPubSubNotification(
-            "pin_upload", 
-            "UPLOAD_PIN", 
-            userId, 
-            savedPin.getPinId(), 
+            "pin_upload",
+            "UPLOAD_PIN",
+            userId,
+            savedPin.getPinId(),
             LocalDateTime.now()
         );
         redisPublisherService.publishPinUploadEvent(notification);
@@ -181,7 +183,7 @@ public class PinService {
         // 4. Delete related records that might block DB deletion
         pinLikeRepository.deleteByPin(pin);
         savedPinRepository.deleteByPin(pin);
-        
+
         // 5. Delete pin from database (comments will be cascade deleted via JPA)
         pinRepository.delete(pin);
         log.info("Pin deleted successfully: {}", pinId);
@@ -200,10 +202,10 @@ public class PinService {
     public Pin getPinWithDetails(UUID pinId) {
         Pin pin = pinRepository.findById(pinId)
                 .orElseThrow(() -> new ResourceNotFoundException("Pin not found"));
-        
+
         // Filter to only top-level comments to prevent duplicate rendering in frontend
         pin.setCommentsList(commentRepository.findByPinAndParentCommentIsNull(pin));
-        
+
         refreshPinUrl(pin); // Ensure URL is fresh
         return pin;
     }
@@ -215,9 +217,9 @@ public class PinService {
         }
         String currentUrl = pin.getPinUrl();
         String key = extractKeyFromUrl(currentUrl);
-        
+
         System.out.println("DEBUG: Refreshing URL for Pin: " + pin.getPinId() + " [" + pin.getTitle() + "] Key: " + key);
-        
+
         if (key != null && !key.isEmpty()) {
             try {
                 String freshUrl = s3FileService.getPresignedUrl(key, 60);
@@ -276,7 +278,7 @@ public class PinService {
         org.springframework.data.domain.PageRequest pageRequest =
             org.springframework.data.domain.PageRequest.of(page, size,
                 org.springframework.data.domain.Sort.by("uploadedAt").descending());
-        
+
         org.springframework.data.domain.Page<Pin> pinPage;
         if (query == null || query.trim().isEmpty()) {
             pinPage = pinRepository.findAll(pageRequest);
@@ -284,7 +286,7 @@ public class PinService {
             String q = query.trim();
             pinPage = pinRepository.findByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase(q, q, pageRequest);
         }
-        
+
         List<Pin> results = pinPage.getContent();
         results.forEach(this::refreshPinUrl);
         return new com.Minterest.ImageHosting.model.AppFeatures.Feed(results, page, size, pinPage.getTotalElements());
@@ -295,22 +297,22 @@ public class PinService {
         try {
             // 1. Remove query parameters if present
             String cleanUrl = url.contains("?") ? url.substring(0, url.indexOf("?")) : url;
-            
+
             // 2. Use URI for path extraction
             java.net.URI uri = new java.net.URI(cleanUrl);
             String path = uri.getPath();
             if (path == null) return null;
 
             if (path.startsWith("/")) path = path.substring(1);
-            
+
             // Trim bucketName just in case there's whitespace from properties
             String trimmedBucket = bucketName != null ? bucketName.trim() : null;
-            
+
             // 3. Handle both virtual-hosted and path-style URLs
             if (trimmedBucket != null && path.startsWith(trimmedBucket + "/")) {
                 path = path.substring(trimmedBucket.length() + 1);
             }
-            
+
             return path;
         } catch (Exception e) {
             log.error("Failed to extract key from URL: {}", url);
@@ -340,7 +342,7 @@ public class PinService {
 
             // Increase trending score by 2
             redisFeedService.updatePinScore(pinId, 2.0);
-            
+
             log.info("Buffered Like Event in Redis for User: {} on Pin: {}", userId, pinId);
 
 
@@ -376,13 +378,13 @@ public class PinService {
     public long getPinLikesCount(UUID pinId) {
         Pin pin = pinRepository.findById(pinId)
                 .orElseThrow(() -> new RuntimeException("Pin not found"));
-        
+
         // Sum DB count + Redis buffer count
         long dbCount = pinLikeRepository.countByPin(pin);
-        
+
         String bufferKey = LIKE_BUFFER_KEY + pinId;
         Long bufferCount = redisTemplate.opsForSet().size(bufferKey);
-        
+
         return dbCount + (bufferCount != null ? bufferCount : 0);
     }
 
