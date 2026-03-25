@@ -1,0 +1,152 @@
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+  padding: 16px;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 32px;
+  width: 100%;
+  max-width: 900px;
+  max-height: 92vh;
+  overflow-y: auto;
+  position: relative;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+}
+
+.modal-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: #f0f0f0;
+  color: #333;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  transition: background var(--transition-fast);
+}
+.modal-close:hover {
+  background: #ddd;
+}
+
+.modal-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin-bottom: 0;
+  padding: 24px 32px 0 32px;
+  text-align: center;
+}
+
+/* Split layout: left image, right fields */
+.upload-form-split {
+  display: flex;
+  height: 560px;
+}
+
+.upload-dropzone-container {
+  flex: 1;
+  background: #efefef;
+  border-radius: 32px 0 0 32px;
+  overflow: hidden;
+  cursor: pointer;
+  position: relative;
+}
+
+.upload-dropzone {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  transition: background var(--transition-fast);
+}
+.upload-dropzone:hover {
+  background: #e5e5e5;
+}
+
+.upload-dropzone input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%;
+  height: 100%;
+}
+
+.dropzone-icon {
+  color: #999;
+  margin-bottom: 12px;
+}
+
+.upload-fields-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  gap: 16px;
+  overflow-y: auto;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-group label {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.form-group input, .form-group textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border: none;
+  border-bottom: 2px solid #eee;
+  background: transparent;
+  font-family: inherit;
+  font-size: 1rem;
+  transition: border-color var(--transition-fast);
+  color: var(--text-primary);
+}
+.form-group input:focus, .form-group textarea:focus {
+  outline: none;
+  border-bottom-color: var(--accent-primary);
+}
+.form-group input::placeholder, .form-group textarea::placeholder {
+  color: #bbb;
+}
+.form-group textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+
+/* Mobile */
+@media (max-width: 640px) {
+  .upload-form-split {
+    flex-direction: column;
+    height: auto;
+  }
+  .upload-dropzone-container {
+    border-radius: 32px 32px 0 0;
+    min-height: 240px;
+  }
+}

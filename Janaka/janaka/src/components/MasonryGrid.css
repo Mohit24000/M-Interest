@@ -1,0 +1,114 @@
+.masonry-grid {
+  column-count: 3;
+  column-gap: 20px;
+  width: 100%;
+}
+
+.masonry-item {
+  break-inside: avoid;
+  margin-bottom: 20px;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  position: relative;
+  background: var(--bg-secondary);
+  cursor: zoom-in;
+  animation: fadeIn 0.8s ease backwards;
+}
+
+.masonry-item:nth-child(1) { animation-delay: 0.1s; }
+.masonry-item:nth-child(2) { animation-delay: 0.2s; }
+.masonry-item:nth-child(3) { animation-delay: 0.3s; }
+.masonry-item:nth-child(4) { animation-delay: 0.4s; }
+.masonry-item:nth-child(5) { animation-delay: 0.5s; }
+
+.masonry-item img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.masonry-item:hover img {
+  filter: brightness(0.85);
+}
+
+.masonry-overlay {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 16px;
+  pointer-events: none;
+}
+
+.masonry-item:hover .masonry-overlay {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.masonry-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.bottom-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+
+.image-title {
+  color: white;
+  font-weight: 500;
+  font-size: 1rem;
+  opacity: 0; /* Only visible on hover */
+  transform: translateY(10px);
+  transition: all 0.2s ease;
+}
+
+.masonry-item:hover .image-title {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.small-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--text-primary);
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, transform 0.2s;
+}
+
+.small-icon:hover {
+  background: white;
+  transform: scale(1.05);
+}
+
+.heart-btn {
+  background: var(--accent-primary);
+  color: white;
+}
+.heart-btn:hover {
+  background: var(--accent-hover);
+  color: white;
+}
+
+.heart-btn.liked {
+  background: #ff4444;
+  color: white;
+}
+.heart-btn.liked:hover {
+  background: #cc0000;
+}
+
+@media (max-width: 1200px) { .masonry-grid { column-count: 3; } }
+@media (max-width: 900px) { .masonry-grid { column-count: 2; } }
+@media (max-width: 600px) { .masonry-grid { column-count: 1; } }
