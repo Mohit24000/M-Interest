@@ -36,7 +36,7 @@ services:
       - m-interest-network
 
   backend:
-    build: 
+    build:
       context: ./ImageHosting
       dockerfile: Dockerfile
     container_name: m-interest-backend
@@ -50,8 +50,6 @@ services:
       SPRING_ELASTICSEARCH_URIS: http://elasticsearch:9200
       AWS_ACCESS_KEY: ${AWS_ACCESS_KEY}
       AWS_SECRET_KEY: ${AWS_SECRET_KEY}
-      MAIL_USERNAME: ${MAIL_USERNAME}
-      MAIL_PASSWORD: ${MAIL_PASSWORD}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
