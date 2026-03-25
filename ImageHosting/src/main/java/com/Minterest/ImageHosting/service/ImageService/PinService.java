@@ -70,7 +70,7 @@ public class PinService {
         if (uploadCount != null && uploadCount > 3) {
             log.warn("User {} exceeded daily upload limit", userId);
             redisTemplate.opsForValue().decrement(limitKey);
-            throw new RuntimeException("Daily upload limit exceeded. You can only upload 3 pins per day.");
+            throw new com.Minterest.ImageHosting.exception.BadRequestException("Daily upload limit exceeded. You can only upload 3 pins per day.");
         }
 
         if (uploadCount != null && uploadCount == 1) {

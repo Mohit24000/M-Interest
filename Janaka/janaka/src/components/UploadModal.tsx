@@ -63,8 +63,14 @@ const UploadModal = ({ isOpen, onClose }: UploadModalProps) => {
         onClose();
         window.location.reload();
       } else {
-        const errorText = await res.text();
-        alert(`Upload failed: ${errorText}`);
+        let errorMsg = 'Unknown error occurred.';
+        try {
+          const errorData = await res.clone().json();
+          errorMsg = errorData.message || errorData.error || await res.text();
+        } catch {
+          errorMsg = await res.text();
+        }
+        alert(errorMsg);
       }
     } catch {
       alert('Network error. Is the backend running?');
